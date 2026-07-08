@@ -132,7 +132,13 @@ def show_stock_detail(symbol, close, setclose, fee, cap):
         st.warning("❌ แพ้ Buy & Hold")
 
     st.subheader("📈 มูลค่าเงินต้นตามเวลา (บาท)")
-    st.line_chart(pd.DataFrame({"บอต": df["equity"] * cap, "Buy & Hold": df["bh"] * cap}))
+    comp = {"บอต": df["equity"] * cap, "ถือหุ้นนี้ (B&H)": df["bh"] * cap}
+    if setclose is not None:
+        s = setclose.reindex(df.index).ffill()
+        base = s.dropna()
+        if len(base):
+            comp["SET Index"] = s / base.iloc[0] * cap
+    st.line_chart(pd.DataFrame(comp))
 
     st.subheader("💹 ราคา + EMA + จุดซื้อ/ขาย")
     pdf = pd.DataFrame({"date": df.index, "close": df["close"].values,
@@ -295,7 +301,13 @@ if mode == "สแกนทั้งกลุ่ม":
             st.warning("❌ แพ้การถือทั้งกลุ่ม")
 
         st.subheader("📈 มูลค่าพอร์ตตามเวลา (บาท)")
-        st.line_chart(pd.DataFrame({"พอร์ตหมุนเงิน": eq * cap, "ถือทั้งกลุ่ม (เฉลี่ย)": R["bh"] * cap}))
+        comp = {"พอร์ตหมุนเงิน": eq * cap, "ถือทั้งกลุ่ม (เฉลี่ย)": R["bh"] * cap}
+        if setclose is not None:
+            s = setclose.reindex(R["idx"]).ffill()
+            base = s.dropna()
+            if len(base):
+                comp["SET Index"] = s / base.iloc[0] * cap
+        st.line_chart(pd.DataFrame(comp))
 
         # สรุปรายตัว
         st.subheader("🏆 สรุปรายหุ้น (กำไรรวมต่อตัว)")
