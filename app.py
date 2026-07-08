@@ -97,6 +97,51 @@ def build_and_sim(close, setclose, fee):
     return df, events, m
 
 
+def show_stock_detail(symbol, close, setclose, fee, cap):
+    """แสดงรายละเอียดหุ้นตัวเดียว: เมตริก + กราฟจุดซื้อขาย + log"""
+    df, events, m = build_and_sim(close, setclose, fee)
+    eq = df["equity"]
+    final_value = cap * eq.iloc[-1]; profit = final_value - cap
+
+    st.markdown(f"### 📊 {symbol.replace('.BK', '')}")
+    c1, c2, c3, c4 = st.columns(4)
+    c1.metric("มูลค่าสุดท้าย", f"{final_value:,.0f} ฿", f"{profit:+,.0f} ฿")
+    c2.metric("ผลตอบแทน (บอต)", f"{m['total']*100:+.1f}%", f"vs B&H {m['bh']*100:+.1f}%")
+    c3.metric("CAGR / ปี", f"{m['cagr']*100:+.1f}%")
+    c4.metric("Max Drawdown", f"{m['maxdd']*100:.1f}%")
+    c5, c6 = st.columns(2)
+    c5.metric("Win rate", f"{m['wr']:.0f}%", f"{m['nbuy']} ไม้")
+    c6.metric("ถ้าถือเฉยๆ (B&H)", f"{cap*df['bh'].iloc[-1]:,.0f} ฿", f"{cap*m['bh']:+,.0f} ฿")
+    if m["total"] > m["bh"]:
+        st.success("✅ ชนะ Buy & Hold")
+    else:
+        st.warning("❌ แพ้ Buy & Hold")
+
+    st.subheader("📈 มูลค่าเงินต้นตามเวลา (บาท)")
+    st.line_chart(pd.DataFrame({"บอต": df["equity"] * cap, "Buy & Hold": df["bh"] * cap}))
+
+    st.subheader("💹 ราคา + EMA + จุดซื้อ/ขาย")
+    pdf = pd.DataFrame({"date": df.index, "close": df["close"].values,
+                        "EMA50": df["ema50"].values, "EMA200": df["ema200"].values})
+    line = alt.Chart(pdf).mark_line(color="#9aa4b2").encode(x="date:T", y=alt.Y("close:Q", title="ราคา"))
+    e50 = alt.Chart(pdf).mark_line(color="#3fb950", strokeDash=[4, 3]).encode(x="date:T", y="EMA50:Q")
+    e200 = alt.Chart(pdf).mark_line(color="#f0883e", strokeDash=[4, 3]).encode(x="date:T", y="EMA200:Q")
+    mk = pd.DataFrame([{"date": df.index[i], "price": p, "act": "BUY" if a == "BUY" else "SELL"}
+                       for (i, a, p) in events])
+    layers = [line, e50, e200]
+    if not mk.empty:
+        layers.append(alt.Chart(mk[mk.act == "BUY"]).mark_point(shape="triangle-up", size=90, color="#2ea043", filled=True).encode(x="date:T", y="price:Q"))
+        layers.append(alt.Chart(mk[mk.act == "SELL"]).mark_point(shape="triangle-down", size=90, color="#f85149", filled=True).encode(x="date:T", y="price:Q"))
+    st.altair_chart(alt.layer(*layers).interactive(), use_container_width=True)
+
+    st.subheader(f"🧾 รายการซื้อ/ขาย ({len(events)})")
+    if events:
+        st.dataframe(pd.DataFrame([{"วันที่": df.index[i].strftime("%Y-%m-%d"), "การกระทำ": a, "ราคา": round(p, 2)}
+                                  for (i, a, p) in events]), use_container_width=True, hide_index=True)
+    else:
+        st.info("ไม่มีสัญญาณเข้าในช่วงนี้")
+
+
 # ── sidebar ──
 with st.sidebar:
     st.header("⚙️ ตั้งค่า")
@@ -158,54 +203,22 @@ if mode == "สแกนทั้งกลุ่ม":
     c1.metric("หุ้นที่ทดสอบ", len(res))
     c2.metric("ชนะ Buy & Hold", f"{beat} / {len(res)}")
     c3.metric("ผลตอบแทนเฉลี่ย", f"{res['ผลตอบแทน%'].mean():+.1f}%")
-    st.dataframe(res, use_container_width=True, hide_index=True)
-    st.caption("เรียงจากผลตอบแทนสูง→ต่ำ · 'ชนะ B&H' = กลยุทธ์ดีกว่าถือเฉยๆ · ⚠️ กัน overfit: ลองหลายช่วงเวลา")
+    st.caption("👉 คลิกที่แถวหุ้น เพื่อดูกราฟ+จุดซื้อขายของตัวนั้น · เรียงผลตอบแทนสูง→ต่ำ")
+    event = st.dataframe(res, use_container_width=True, hide_index=True,
+                         on_select="rerun", selection_mode="single-row", key="scan_tbl")
+    sel = event.selection.rows if event and event.selection else []
+    if sel:
+        sym = res.iloc[sel[0]]["หุ้น"] + ".BK"
+        st.divider()
+        show_stock_detail(sym, closes[sym], setclose, fee, cap)
+    else:
+        st.info("👆 คลิกแถวหุ้นในตารางเพื่อดูรายละเอียด")
+    st.caption("⚠️ backtest ≠ ผลจริง · กัน overfit: ลองหลายช่วงเวลา · Sandbox ≤10%")
     st.stop()
 
 # ══════════ โหมดหุ้นเดียว ══════════
 close = load_one(symbol, int(years))
 if close is None:
     st.error(f"ไม่มีข้อมูล {symbol}"); st.stop()
-df, events, m = build_and_sim(close, setclose, fee)
-
-eq = df["equity"]
-final_value = cap * eq.iloc[-1]; profit = final_value - cap
-c1, c2, c3, c4 = st.columns(4)
-c1.metric("มูลค่าสุดท้าย", f"{final_value:,.0f} ฿", f"{profit:+,.0f} ฿")
-c2.metric("ผลตอบแทน (บอต)", f"{m['total']*100:+.1f}%", f"vs B&H {m['bh']*100:+.1f}%")
-c3.metric("CAGR / ปี", f"{m['cagr']*100:+.1f}%")
-c4.metric("Max Drawdown", f"{m['maxdd']*100:.1f}%")
-c5, c6 = st.columns(2)
-c5.metric("Win rate", f"{m['wr']:.0f}%", f"{m['nbuy']} ไม้")
-c6.metric("ถ้าถือเฉยๆ (B&H)", f"{cap*df['bh'].iloc[-1]:,.0f} ฿", f"{cap*m['bh']:+,.0f} ฿")
-
-if m["total"] > m["bh"]:
-    st.success("✅ ชนะ Buy & Hold")
-else:
-    st.warning("❌ แพ้ Buy & Hold")
-
-st.subheader("📈 มูลค่าเงินต้นตามเวลา (บาท)")
-st.line_chart(pd.DataFrame({"บอต": df["equity"] * cap, "Buy & Hold": df["bh"] * cap}))
-
-st.subheader("💹 ราคา + EMA + จุดซื้อ/ขาย")
-pdf = pd.DataFrame({"date": df.index, "close": df["close"].values,
-                    "EMA50": df["ema50"].values, "EMA200": df["ema200"].values})
-line = alt.Chart(pdf).mark_line(color="#9aa4b2").encode(x="date:T", y=alt.Y("close:Q", title="ราคา"))
-e50 = alt.Chart(pdf).mark_line(color="#3fb950", strokeDash=[4, 3]).encode(x="date:T", y="EMA50:Q")
-e200 = alt.Chart(pdf).mark_line(color="#f0883e", strokeDash=[4, 3]).encode(x="date:T", y="EMA200:Q")
-mk = pd.DataFrame([{"date": df.index[i], "price": p, "act": "BUY" if a == "BUY" else "SELL"}
-                   for (i, a, p) in events])
-layers = [line, e50, e200]
-if not mk.empty:
-    layers.append(alt.Chart(mk[mk.act == "BUY"]).mark_point(shape="triangle-up", size=90, color="#2ea043", filled=True).encode(x="date:T", y="price:Q"))
-    layers.append(alt.Chart(mk[mk.act == "SELL"]).mark_point(shape="triangle-down", size=90, color="#f85149", filled=True).encode(x="date:T", y="price:Q"))
-st.altair_chart(alt.layer(*layers).interactive(), use_container_width=True)
-
-st.subheader(f"🧾 รายการซื้อ/ขาย ({len(events)})")
-if events:
-    st.dataframe(pd.DataFrame([{"วันที่": df.index[i].strftime("%Y-%m-%d"), "การกระทำ": a, "ราคา": round(p, 2)}
-                              for (i, a, p) in events]), use_container_width=True, hide_index=True)
-else:
-    st.info("ไม่มีสัญญาณเข้าในช่วงนี้")
-
+show_stock_detail(symbol, close, setclose, fee, cap)
 st.caption("⚠️ backtest ≠ ผลจริง · ลองหลายตัว/หลายช่วง กัน overfit · Sandbox ≤10%")
