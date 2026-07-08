@@ -62,7 +62,7 @@ def rsi(s, p=14):
     return (100 - 100 / (1 + up / dn.replace(0, np.nan))).fillna(50)
 
 
-def build_and_sim(close, setclose, fee):
+def build_and_sim(close, setclose, fee, use_scaling=False):
     df = pd.DataFrame({"close": close})
     df["ema10"] = ema(close, 10); df["ema50"] = ema(close, 50); df["ema200"] = ema(close, 200)
     df["rsi"] = rsi(close); df["macd"] = ema(close, 12) - ema(close, 26)
@@ -81,23 +81,69 @@ def build_and_sim(close, setclose, fee):
 
     held, ep, run_eq, days_in = 0.0, 0.0, 1.0, 0
     strat, events, trades, entry = [], [], [], None
+
+    # สำหรับ scaling strategy
+    sold_at_10pct = False
+    sold_at_20pct = False
+    peak_at_20pct = 0.0
+
     for i in range(len(df)):
         if held > 0:
-            days_in += 1                           # วันที่เงินทำงาน (ถือหุ้นอยู่)
+            days_in += 1
         r = held * ret[i]; ft = 0.0; price = c[i]
+
         if held > 0:
             chg = price / ep - 1
-            reason = "SL -8%" if chg <= -CUT else ("หลุด EMA50" if price < e50[i] else None)
-            if reason:
-                ft += fee; held = 0
-                trades.append({**entry, "exit_i": i, "exit_price": price, "reason": reason,
-                               "pnl": price / entry["price"] - 1 - 2 * fee})
-                events.append((i, "SELL", price)); entry = None
+
+            # Scaling strategy
+            if use_scaling:
+                # ที่ 10% profit → ขาย 50%
+                if not sold_at_10pct and chg >= 0.10:
+                    ft += fee
+                    held *= 0.5
+                    sold_at_10pct = True
+                    events.append((i, "SELL 50%", price))
+
+                # ที่ 20% profit → ขาย 50% ของที่เหลือ
+                elif not sold_at_20pct and chg >= 0.20:
+                    ft += fee
+                    held *= 0.5
+                    sold_at_20pct = True
+                    peak_at_20pct = price
+                    events.append((i, "SELL 50%", price))
+
+                # ขายหมด
+                reason = None
+                if chg <= -CUT:
+                    reason = "SL -8%"
+                elif price < e50[i]:
+                    reason = "หลุด EMA50"
+                elif sold_at_20pct and price <= peak_at_20pct * 0.95:
+                    reason = "หลุด -5% from 20%"
+
+                if reason and held > 0:
+                    ft += fee
+                    trades.append({**entry, "exit_i": i, "exit_price": price, "reason": reason,
+                                   "pnl": price / entry["price"] - 1 - 2 * fee})
+                    held = 0
+                    events.append((i, "SELL ALL", price))
+            else:
+                # Default strategy
+                reason = "SL -8%" if chg <= -CUT else ("หลุด EMA50" if price < e50[i] else None)
+                if reason:
+                    ft += fee; held = 0
+                    trades.append({**entry, "exit_i": i, "exit_price": price, "reason": reason,
+                                   "pnl": price / entry["price"] - 1 - 2 * fee})
+                    events.append((i, "SELL", price)); entry = None
         else:
             if cond[i]:
                 ft += fee; held = 1.0; ep = price
                 entry = {"entry_i": i, "price": price, "eq": run_eq}
+                sold_at_10pct = False
+                sold_at_20pct = False
+                peak_at_20pct = 0.0
                 events.append((i, "BUY", price))
+
         day_ret = r - ft; strat.append(day_ret); run_eq *= (1 + day_ret)
 
     if held > 0 and entry:                         # ไม้ที่ยังถืออยู่ตอนจบ
@@ -120,9 +166,9 @@ def build_and_sim(close, setclose, fee):
     return df, events, m
 
 
-def show_stock_detail(symbol, close, setclose, fee, cap):
+def show_stock_detail(symbol, close, setclose, fee, cap, use_scaling=False):
     """แสดงรายละเอียดหุ้นตัวเดียว: เมตริก + กราฟจุดซื้อขาย + log"""
-    df, events, m = build_and_sim(close, setclose, fee)
+    df, events, m = build_and_sim(close, setclose, fee, use_scaling)
     eq = df["equity"]
     final_value = cap * eq.iloc[-1]; profit = final_value - cap
 
@@ -275,6 +321,13 @@ with st.sidebar:
     years = st.slider("ปีย้อนหลัง", 1, 10, 5)
     cap = st.number_input("เงินต้น (บาท)", 1000, 10_000_000, 50_000, 1000)
     fee = st.number_input("ค่าธรรมเนียม %/ข้าง", 0.0, 1.0, 0.2, 0.05) / 100
+
+    st.divider()
+    st.subheader("🎯 กลยุทธ์ EXIT")
+    strategy = st.radio("เลือกกลยุทธ์",
+                       ["Default (Trail EMA50)", "Scaling Out (10%→50%, 20%→50%)"],
+                       help="Scaling Out: ขาย50% ที่ 10%, ขาย50% ที่ 20%, ปล่อยไป -5%")
+    use_scaling = strategy == "Scaling Out (10%→50%, 20%→50%)"
 
     st.divider()
     st.subheader("📊 ตัวชี้วัดทางการเงิน (Fundamental)")
@@ -443,7 +496,7 @@ if mode == "สแกนทั้งกลุ่ม":
                     prog.progress((k + 1) / len(items))
                     continue
 
-            _, _, m = build_and_sim(c, setclose, fee)
+            _, _, m = build_and_sim(c, setclose, fee, use_scaling)
             sym_clean = sym.replace(".BK", "")
             rows.append({
                 "หุ้น": sym_clean,
@@ -497,7 +550,7 @@ if mode == "สแกนทั้งกลุ่ม":
                 if sel:
                     sym = sector_data.iloc[sel[0]]["หุ้น"] + ".BK"
                     st.divider()
-                    show_stock_detail(sym, closes[sym], setclose, fee, cap)
+                    show_stock_detail(sym, closes[sym], setclose, fee, cap, use_scaling)
     else:
         # แสดงทั้งหมด
         st.caption("👉 คลิกที่แถวหุ้น เพื่อดูกราฟ+จุดซื้อขายของตัวนั้น · เรียงผลตอบแทนสูง→ต่ำ")
@@ -507,7 +560,7 @@ if mode == "สแกนทั้งกลุ่ม":
         if sel:
             sym = res_filtered.iloc[sel[0]]["หุ้น"] + ".BK"
             st.divider()
-            show_stock_detail(sym, closes[sym], setclose, fee, cap)
+            show_stock_detail(sym, closes[sym], setclose, fee, cap, use_scaling)
         else:
             st.info("👆 คลิกแถวหุ้นในตารางเพื่อดูรายละเอียด")
     st.caption("⚠️ backtest ≠ ผลจริง · กัน overfit: ลองหลายช่วงเวลา · Sandbox ≤10%")
