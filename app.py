@@ -413,6 +413,10 @@ if mode == "สแกนทั้งกลุ่ม":
         prog.progress((k + 1) / len(items))
     prog.empty()
 
+    if not rows:
+        st.error("ไม่มีหุ้นที่ผ่านเงื่อนไข (ลองปรับ Fundamental Filter หรือเพิ่มช่วงปี)")
+        st.stop()
+
     res = pd.DataFrame(rows).sort_values("ผลตอบแทน%", ascending=False).reset_index(drop=True)
     beat = (res["ชนะ B&H"] == "✅").sum()
     c1, c2, c3 = st.columns(3)
