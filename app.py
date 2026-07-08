@@ -51,7 +51,7 @@ with st.sidebar:
 
 st.markdown("""
 **กลยุทธ์ ① — EMA Trend + SET Filter**
-- **เข้า** (ครบทุกข้อ): หุ้น `Close>EMA200` · `EMA10>EMA50` · `EMA50>EMA200` **และ** SET เข้าเงื่อนไขเดียวกัน
+- **เข้า** (ครบทุกข้อ): หุ้น `Close>EMA200` · `EMA10>EMA50` · `EMA50>EMA200` · `MACD>0` **และ** SET `Close>EMA200` · `EMA10>EMA50` · `EMA50>EMA200`
 - **ออก**: Cut Loss `-5%` · `+10%` (RSI≥80 ขาย / <80 ปล่อยวิ่ง) · `+15%` ขายครึ่ง · เทรนด์พัง (EMA10<EMA50) ขายที่เหลือ
 """)
 
@@ -71,8 +71,14 @@ df["ema10"] = ema(df["close"], 10)
 df["ema50"] = ema(df["close"], 50)
 df["ema200"] = ema(df["close"], 200)
 df["rsi"] = rsi(df["close"])
+df["macd"] = ema(df["close"], 12) - ema(df["close"], 26)   # MACD line
 
-stock_ok = (df["close"] > df["ema200"]) & (df["ema10"] > df["ema50"]) & (df["ema50"] > df["ema200"])
+stock_ok = (
+    (df["close"] > df["ema200"])
+    & (df["ema10"] > df["ema50"])
+    & (df["ema50"] > df["ema200"])
+    & (df["macd"] > 0)
+)
 
 if setpx is not None:
     s = setpx.reindex(df.index).ffill()
