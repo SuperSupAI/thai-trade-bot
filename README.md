@@ -35,7 +35,26 @@ python backtest.py --symbol SELIC.BK --fast 10 --slow 30
 
 ---
 
-## 📊 กลยุทธ์เริ่มต้น (backtest.py)
+## 📊 Streamlit App (app.py) — Backtest UI
+### กลยุทธ์ EMA Trend + Fundamental Filter
+**ทำงาน**:
+- **เข้า** (ครบทุกข้อ): หุ้น `Close>EMA200` · `EMA10>EMA50` · `EMA50>EMA200` · `MACD>0` **และ** SET ตรวจสอบเงื่อนไขเดียวกัน
+- **ออก**: Cut Loss `-8%` (เริ่มต้น) · หรือหลุด EMA50
+- **+ Fundamental Filter (เพิ่มใหม่)**:
+  - P/E Ratio < 20
+  - ROE > 15%
+  - D/E Ratio < 1
+  - Gross Margin > 40%
+  - EBIT Margin > 10%
+  - EPS Growth > 10%
+
+**โหมด**:
+1. **หุ้นเดียว** — ดูเมตริก + กราฟ + รายตัวสัญญาณซื้อ-ขาย
+2. **สแกนทั้งกลุ่ม** → ดูรายตัว (ตาราง) หรือจัดพอร์ตหมุนเงิน
+
+---
+
+## 📊 หลักการกลยุทธ์เริ่มต้น (backtest.py)
 **SMA Crossover** (long-only — หุ้นไทย short ยาก):
 - เส้นเร็ว (fast) ตัดขึ้นเหนือเส้นช้า (slow) → ซื้อ
 - ตัดลง → ขาย

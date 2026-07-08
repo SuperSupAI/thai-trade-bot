@@ -7,6 +7,7 @@ import pandas as pd
 import streamlit as st
 import altair as alt
 from universe import SECTORS, group_symbols
+from fundamentals import get_fundamentals, passes_fundamental_filter, format_ratio
 
 st.set_page_config(page_title="Thai Trade Bot — Backtest", page_icon="🤖", layout="wide")
 st.title("🤖 Thai Trade Bot — Backtest")
@@ -131,6 +132,22 @@ def show_stock_detail(symbol, close, setclose, fee, cap):
     else:
         st.warning("❌ แพ้ Buy & Hold")
 
+    # แสดง Fundamental Data
+    st.subheader("📈 ตัวชี้วัดทางการเงิน")
+    fund = get_fundamentals(symbol)
+    if fund:
+        fc1, fc2, fc3, fc4, fc5 = st.columns(5)
+        fc1.metric("P/E", format_ratio(fund.get('pe_ratio'), ".2f"))
+        fc2.metric("ROE", format_ratio(fund.get('roe'), ".2%"))
+        fc3.metric("D/E", format_ratio(fund.get('de_ratio'), ".2f"))
+        fc4.metric("Gross Margin", format_ratio(fund.get('gross_margin'), ".2%"))
+        fc5.metric("EPS Growth", format_ratio(fund.get('eps_growth'), ".2%"))
+        fc6, fc7 = st.columns(2)
+        fc6.metric("EBIT Margin", format_ratio(fund.get('ebit_margin'), ".2%"))
+        fc7.metric("Profit Margin", format_ratio(fund.get('profit_margin'), ".2%"))
+    else:
+        st.info("ไม่มีข้อมูล fundamental")
+
     st.subheader("📈 มูลค่าเงินต้นตามเวลา (บาท)")
     comp = {"บอต": df["equity"] * cap, "ถือหุ้นนี้ (B&H)": df["bh"] * cap}
     if setclose is not None:
@@ -163,7 +180,7 @@ def show_stock_detail(symbol, close, setclose, fee, cap):
             rows.append({
                 "ไม้": k,
                 "ซื้อ": df.index[t["entry_i"]].strftime("%d/%m/%y"),
-                "ราคาซื้อ": round(t["entry_price"], 2),
+                "ราคาซื้อ": round(t["price"], 2),
                 "ขาย": (df.index[t["exit_i"]].strftime("%d/%m/%y") if t["exit_i"] is not None else "ยังถือ"),
                 "ราคาขาย": round(t["exit_price"], 2),
                 "ถือ(วัน)": last - t["entry_i"],
@@ -249,6 +266,28 @@ with st.sidebar:
     years = st.slider("ปีย้อนหลัง", 1, 10, 5)
     cap = st.number_input("เงินต้น (บาท)", 1000, 10_000_000, 50_000, 1000)
     fee = st.number_input("ค่าธรรมเนียม %/ข้าง", 0.0, 1.0, 0.2, 0.05) / 100
+
+    st.divider()
+    st.subheader("📊 ตัวชี้วัดทางการเงิน (Fundamental)")
+    use_fundamental = st.checkbox("ใช้ Fundamental Filter", value=False)
+    fundamental_criteria = {}
+    if use_fundamental:
+        col1, col2 = st.columns(2)
+        with col1:
+            max_pe = st.number_input("P/E Ratio <", value=20.0, step=1.0)
+            fundamental_criteria['max_pe'] = max_pe if max_pe else None
+            min_roe = st.number_input("ROE > %", value=15.0, step=1.0)
+            fundamental_criteria['min_roe'] = min_roe / 100 if min_roe else None
+            max_de = st.number_input("D/E Ratio <", value=1.0, step=0.1)
+            fundamental_criteria['max_de'] = max_de if max_de else None
+        with col2:
+            min_gross = st.number_input("Gross Margin > %", value=40.0, step=5.0)
+            fundamental_criteria['min_gross_margin'] = min_gross / 100 if min_gross else None
+            min_ebit = st.number_input("EBIT Margin > %", value=10.0, step=1.0)
+            fundamental_criteria['min_ebit_margin'] = min_ebit / 100 if min_ebit else None
+            min_eps = st.number_input("EPS Growth > %", value=10.0, step=1.0)
+            fundamental_criteria['min_eps_growth'] = min_eps / 100 if min_eps else None
+
     run = st.button("🚀 รัน Backtest", type="primary", use_container_width=True)
 
 st.markdown("""
@@ -276,8 +315,22 @@ if mode == "สแกนทั้งกลุ่ม":
 
     # ══ โหมดจัดพอร์ตหมุนเงิน ══
     if scan_style.startswith("จัดพอร์ต"):
+        # Filter by fundamentals ถ้าเปิดใช้
+        if use_fundamental:
+            filtered_closes = {}
+            for sym, c in closes.items():
+                fund = get_fundamentals(sym)
+                if passes_fundamental_filter(fund, fundamental_criteria):
+                    filtered_closes[sym] = c
+            if not filtered_closes:
+                st.error("ไม่มีหุ้นที่ผ่านเงื่อนไข fundamental"); st.stop()
+            st.info(f"ผ่าน Fundamental Filter: {len(filtered_closes)} / {len(closes)} หุ้น")
+            closes_to_use = filtered_closes
+        else:
+            closes_to_use = closes
+
         with st.spinner("กำลังจำลองพอร์ต..."):
-            R = simulate_portfolio(closes, setclose, fee, n_slots)
+            R = simulate_portfolio(closes_to_use, setclose, fee, n_slots)
         eq = R["eq"]; yrs = len(eq) / 252
         total = eq.iloc[-1] - 1; bh = R["bh"].iloc[-1] - 1
         cagr = eq.iloc[-1] ** (1 / yrs) - 1 if yrs > 0 else 0
@@ -338,6 +391,13 @@ if mode == "สแกนทั้งกลุ่ม":
     items = list(closes.items())
     for k, (sym, c) in enumerate(items):
         try:
+            # เช็ค fundamental filter ถ้าเปิดใช้
+            if use_fundamental:
+                fund = get_fundamentals(sym)
+                if not passes_fundamental_filter(fund, fundamental_criteria):
+                    prog.progress((k + 1) / len(items))
+                    continue
+
             _, _, m = build_and_sim(c, setclose, fee)
             rows.append({
                 "หุ้น": sym.replace(".BK", ""),
