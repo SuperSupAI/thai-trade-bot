@@ -174,6 +174,59 @@ def show_stock_detail(symbol, close, setclose, fee, cap):
         st.info("ไม่มีสัญญาณเข้าในช่วงนี้")
 
 
+def simulate_portfolio(closes, setclose, fee, n_slots):
+    """พอร์ตหมุนเงิน: ถือได้ n_slots ตัวพร้อมกัน · ออกตัวนึง → เอาเงินไปเข้าตัวอื่นที่มีสัญญาณ (ไม่ถือเงินเฉย)"""
+    prices = pd.DataFrame(closes).sort_index().ffill().dropna(how="all")
+    e50 = prices.ewm(span=50, adjust=False).mean()
+    e200 = prices.ewm(span=200, adjust=False).mean()
+    e10 = prices.ewm(span=10, adjust=False).mean()
+    macd = prices.ewm(span=12, adjust=False).mean() - prices.ewm(span=26, adjust=False).mean()
+    C = ((prices > e200) & (e10 > e50) & (e50 > e200) & (macd > 0)).values
+    if setclose is not None:
+        s = setclose.reindex(prices.index).ffill()
+        setmask = ((s > ema(s, 200)) & (ema(s, 10) > ema(s, 50)) & (ema(s, 50) > ema(s, 200))).values
+        C = C & setmask[:, None]
+
+    P = prices.values; E50 = e50.values; SC = (macd / prices).values
+    T, M = P.shape; cols = list(prices.columns); idx = prices.index
+
+    cash, pos = 1.0, {}
+    eqc, fill, trades = [], [], []
+    for i in range(T):
+        for j in list(pos):                                    # อัปเดต + เช็คออก
+            if i > 0 and not np.isnan(P[i-1, j]) and P[i-1, j] > 0 and not np.isnan(P[i, j]):
+                pos[j]["val"] *= P[i, j] / P[i-1, j]
+            p = P[i, j]
+            if np.isnan(p):
+                continue
+            if p <= pos[j]["entry"] * (1 - CUT) or (not np.isnan(E50[i, j]) and p < E50[i, j]):
+                cash += pos[j]["val"] * (1 - fee)
+                trades.append(dict(sym=cols[j].replace(".BK", ""), ei=pos[j]["ei"], ep=pos[j]["entry"],
+                                   xi=i, xp=p, reason=("SL -8%" if p <= pos[j]["entry"]*(1-CUT) else "หลุด EMA50"),
+                                   pnl=p / pos[j]["entry"] - 1 - 2*fee))
+                del pos[j]
+        free = n_slots - len(pos)                              # เติมช่องว่างด้วยตัวที่มีสัญญาณ
+        if free > 0:
+            elig = [j for j in range(M) if C[i, j] and j not in pos and not np.isnan(P[i, j])]
+            elig.sort(key=lambda j: (SC[i, j] if not np.isnan(SC[i, j]) else -9), reverse=True)
+            total = cash + sum(v["val"] for v in pos.values())
+            target = total / n_slots
+            for j in elig[:free]:
+                amt = min(cash, target)
+                if amt < total * 0.01:
+                    break
+                cash -= amt; pos[j] = dict(val=amt * (1 - fee), entry=P[i, j], ei=i)
+        eqc.append(cash + sum(v["val"] for v in pos.values())); fill.append(len(pos))
+
+    for j, v in pos.items():                                   # ไม้ที่ยังถือตอนจบ
+        trades.append(dict(sym=cols[j].replace(".BK", ""), ei=v["ei"], ep=v["entry"],
+                           xi=None, xp=P[-1, j], reason="ยังถือ", pnl=P[-1, j] / v["entry"] - 1 - fee))
+
+    eq = pd.Series(eqc, index=idx)
+    bh = (1 + pd.Series(np.nanmean(prices.pct_change().values, axis=1), index=idx).fillna(0)).cumprod()
+    return dict(eq=eq, bh=bh, trades=trades, fill=fill, idx=idx, n_slots=n_slots)
+
+
 # ── sidebar ──
 with st.sidebar:
     st.header("⚙️ ตั้งค่า")
@@ -182,6 +235,11 @@ with st.sidebar:
         symbol = st.text_input("หุ้น (เช่น PIMO.BK)", "PIMO.BK").strip().upper()
     else:
         group = st.selectbox("กลุ่ม", ["SET100 (ทั้งหมด)"] + list(SECTORS.keys()))
+        scan_style = st.radio("รูปแบบ", ["ดูรายตัว (ตาราง+คลิก)", "จัดพอร์ตหมุนเงิน (ไม่ให้ว่าง)"])
+        n_slots = 1
+        if scan_style.startswith("จัดพอร์ต"):
+            n_slots = st.radio("ถือพร้อมกันกี่ตัว", [1, 5], horizontal=True,
+                               format_func=lambda x: f"{x} ไม้")
     years = st.slider("ปีย้อนหลัง", 1, 10, 5)
     cap = st.number_input("เงินต้น (บาท)", 1000, 10_000_000, 50_000, 1000)
     fee = st.number_input("ค่าธรรมเนียม %/ข้าง", 0.0, 1.0, 0.2, 0.05) / 100
@@ -210,6 +268,60 @@ if mode == "สแกนทั้งกลุ่ม":
     if not closes:
         st.error("โหลดข้อมูลไม่สำเร็จ (ลองใหม่ / ลดจำนวนปี)"); st.stop()
 
+    # ══ โหมดจัดพอร์ตหมุนเงิน ══
+    if scan_style.startswith("จัดพอร์ต"):
+        with st.spinner("กำลังจำลองพอร์ต..."):
+            R = simulate_portfolio(closes, setclose, fee, n_slots)
+        eq = R["eq"]; yrs = len(eq) / 252
+        total = eq.iloc[-1] - 1; bh = R["bh"].iloc[-1] - 1
+        cagr = eq.iloc[-1] ** (1 / yrs) - 1 if yrs > 0 else 0
+        maxdd = (eq / eq.cummax() - 1).min()
+        avg_work = (np.mean(R["fill"]) / n_slots * 100) if R["fill"] else 0
+        trs = R["trades"]; wr = (len([t for t in trs if t["pnl"] > 0]) / len(trs) * 100) if trs else 0
+
+        st.subheader(f"💼 พอร์ตหมุนเงิน · {group} · ถือ {n_slots} ไม้")
+        c1, c2, c3, c4 = st.columns(4)
+        c1.metric("มูลค่าสุดท้าย", f"{cap*eq.iloc[-1]:,.0f} ฿", f"{cap*total:+,.0f} ฿")
+        c2.metric("ผลตอบแทน", f"{total*100:+.1f}%", f"vs ถือทั้งกลุ่ม {bh*100:+.1f}%")
+        c3.metric("CAGR / ปี", f"{cagr*100:+.1f}%")
+        c4.metric("Max Drawdown", f"{maxdd*100:.1f}%")
+        c5, c6, c7 = st.columns(3)
+        c5.metric("⏱️ เงินทำงานเฉลี่ย", f"{avg_work:.0f}%", f"ว่าง {100-avg_work:.0f}%")
+        c6.metric("จำนวนไม้ทั้งหมด", len(trs))
+        c7.metric("Win rate", f"{wr:.0f}%")
+        if total > bh:
+            st.success("✅ ชนะการถือทั้งกลุ่ม (equal-weight)")
+        else:
+            st.warning("❌ แพ้การถือทั้งกลุ่ม")
+
+        st.subheader("📈 มูลค่าพอร์ตตามเวลา (บาท)")
+        st.line_chart(pd.DataFrame({"พอร์ตหมุนเงิน": eq * cap, "ถือทั้งกลุ่ม (เฉลี่ย)": R["bh"] * cap}))
+
+        # สรุปรายตัว
+        st.subheader("🏆 สรุปรายหุ้น (กำไรรวมต่อตัว)")
+        agg = {}
+        for t in trs:
+            a = agg.setdefault(t["sym"], {"n": 0, "pnl": 0.0, "win": 0})
+            a["n"] += 1; a["pnl"] += t["pnl"] * 100; a["win"] += 1 if t["pnl"] > 0 else 0
+        sm = pd.DataFrame([{"หุ้น": k, "ไม้": v["n"], "ชนะ": v["win"],
+                            "กำไรรวม%": round(v["pnl"], 1)} for k, v in agg.items()]) \
+            .sort_values("กำไรรวม%", ascending=False)
+        st.dataframe(sm, use_container_width=True, hide_index=True)
+
+        # log ทุกไม้
+        st.subheader(f"🧾 ทุกไม้ ({len(trs)})")
+        idx = R["idx"]
+        log = pd.DataFrame([{
+            "หุ้น": t["sym"],
+            "ซื้อ": idx[t["ei"]].strftime("%d/%m/%y"),
+            "ขาย": (idx[t["xi"]].strftime("%d/%m/%y") if t["xi"] is not None else "ยังถือ"),
+            "เหตุออก": t["reason"], "กำไร%": round(t["pnl"] * 100, 1),
+        } for t in sorted(trs, key=lambda x: x["ei"])])
+        st.dataframe(log, use_container_width=True, hide_index=True)
+        st.caption("เงินทำงานเฉลี่ย = สัดส่วนเงินที่อยู่ในตลาด (ไม่นอนเฉย) · เทียบ 'ถือทั้งกลุ่ม' = ซื้อทุกตัวถือยาวเท่าๆกัน")
+        st.stop()
+
+    # ══ โหมดดูรายตัว ══
     rows, prog = [], st.progress(0.0)
     items = list(closes.items())
     for k, (sym, c) in enumerate(items):
