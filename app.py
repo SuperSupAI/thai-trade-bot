@@ -321,6 +321,9 @@ with st.sidebar:
             min_eps = st.number_input("% > ", value=10.0, step=1.0, key="min_eps")
             fundamental_criteria['min_eps_growth'] = min_eps / 100
 
+    # ตรวจสอบว่ามีเงื่อนไข fundamental ถูกเปิดใช้หรือไม่
+    use_fundamental = len(fundamental_criteria) > 0
+
     run = st.button("🚀 รัน Backtest", type="primary", use_container_width=True)
 
 st.markdown("""
