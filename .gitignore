@@ -1,0 +1,16 @@
+# secrets — ห้ามขึ้น GitHub เด็ดขาด
+.env
+*.key
+*.pem
+secrets.*
+config.local.*
+
+# python
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# data cache
+*.csv
+data/
