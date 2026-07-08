@@ -1,7 +1,6 @@
 """รายชื่อหุ้น SET100 แบ่งกลุ่มอุตสาหกรรม (curated · แก้ไขได้)
 หมายเหตุ: SET100 เปลี่ยนได้เรื่อยๆ — ลิสต์นี้เป็นตัวยอดนิยม/สภาพคล่องสูง
 """
-import streamlit as st
 SECTORS = {
     "พลังงาน/สาธารณูปโภค": ["PTT", "PTTEP", "GULF", "GPSC", "BGRIM", "EGCO", "RATCH",
                             "BANPU", "TOP", "IRPC", "BCP", "OR", "SPRC", "EA"],
@@ -32,20 +31,25 @@ def get_market_type(symbol):
     return "Regular"
 
 
-@st.cache_data(ttl=86400, show_spinner=False)  # Cache 1 วัน
 def get_all_set_stocks():
     """ดึงรายชื่อหุ้น SET ทั้งหมดจาก investpy (ประมาณ 900+ หุ้น)"""
-    try:
-        import investpy
-        stocks_df = investpy.stocks.get_stocks(country='Thailand')
-        symbols = stocks_df['symbol'].tolist()
-        # เติม .BK และ filter ให้เหลือแค่สัญลักษณ์ที่มีค่า
-        return sorted([s + ".BK" for s in symbols if s and len(s) > 0])
-    except Exception as e:
-        print(f"Error fetching SET stocks from investpy: {e}")
-        # Fallback ใช้ SET100 ถ้า investpy ไม่ได้
-        syms = sorted({s for lst in SECTORS.values() for s in lst})
-        return [s + ".BK" for s in syms]
+    import streamlit as st
+
+    @st.cache_data(ttl=86400, show_spinner=False)
+    def _fetch_stocks():
+        try:
+            import investpy
+            stocks_df = investpy.stocks.get_stocks(country='Thailand')
+            symbols = stocks_df['symbol'].tolist()
+            # เติม .BK และ filter ให้เหลือแค่สัญลักษณ์ที่มีค่า
+            return sorted([s + ".BK" for s in symbols if s and len(s) > 0])
+        except Exception as e:
+            print(f"Error fetching SET stocks from investpy: {e}")
+            # Fallback ใช้ SET100 ถ้า investpy ไม่ได้
+            syms = sorted({s for lst in SECTORS.values() for s in lst})
+            return [s + ".BK" for s in syms]
+
+    return _fetch_stocks()
 
 
 def group_symbols(group):
