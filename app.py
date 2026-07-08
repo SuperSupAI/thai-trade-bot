@@ -45,6 +45,7 @@ with st.sidebar:
     strat = st.selectbox("กลยุทธ์", ["① EMA Trend + SET Filter"])
     symbol = st.text_input("หุ้น (เช่น PIMO.BK)", "PIMO.BK").strip().upper()
     years = st.slider("ปีย้อนหลัง", 1, 10, 5)
+    cap = st.number_input("เงินต้น (บาท)", 1000, 10_000_000, 50_000, 1000)
     fee = st.number_input("ค่าธรรมเนียม %/ข้าง", 0.0, 1.0, 0.2, 0.05) / 100
     run = st.button("🚀 รัน Backtest", type="primary", use_container_width=True)
 
@@ -130,16 +131,27 @@ maxdd = (eq / eq.cummax() - 1).min()
 nbuy = sum(1 for e in events if e[1] == "BUY")
 wr = (len([t for t in trade_ret if t > 0]) / len(trade_ret) * 100) if trade_ret else 0
 
-c1, c2, c3, c4 = st.columns(4)
-c1.metric("ผลตอบแทน (บอต)", f"{total*100:+.1f}%", f"vs B&H {bh*100:+.1f}%")
-c2.metric("CAGR / ปี", f"{cagr*100:+.1f}%")
-c3.metric("Max Drawdown", f"{maxdd*100:.1f}%")
-c4.metric("Win rate", f"{wr:.0f}%", f"{nbuy} ไม้")
-st.success("✅ ชนะ Buy & Hold") if total > bh else st.warning("❌ แพ้ Buy & Hold")
+final_value = cap * eq.iloc[-1]
+profit_baht = final_value - cap
 
-# ── equity ──
-st.subheader("📈 Equity Curve")
-st.line_chart(pd.DataFrame({"บอต": df["equity"], "Buy & Hold": df["bh"]}))
+c1, c2, c3, c4 = st.columns(4)
+c1.metric("มูลค่าสุดท้าย", f"{final_value:,.0f} ฿", f"{profit_baht:+,.0f} ฿")
+c2.metric("ผลตอบแทน (บอต)", f"{total*100:+.1f}%", f"vs B&H {bh*100:+.1f}%")
+c3.metric("CAGR / ปี", f"{cagr*100:+.1f}%")
+c4.metric("Max Drawdown", f"{maxdd*100:.1f}%")
+
+c5, c6 = st.columns(2)
+c5.metric("Win rate", f"{wr:.0f}%", f"{nbuy} ไม้")
+c6.metric("ถ้าถือเฉยๆ (Buy & Hold)", f"{cap*df['bh'].iloc[-1]:,.0f} ฿", f"{cap*bh:+,.0f} ฿")
+
+if total > bh:
+    st.success("✅ ชนะ Buy & Hold")
+else:
+    st.warning("❌ แพ้ Buy & Hold")
+
+# ── equity (บาท) ──
+st.subheader("📈 มูลค่าเงินต้นเมื่อเวลาผ่านไป (บาท)")
+st.line_chart(pd.DataFrame({"บอต": df["equity"] * cap, "Buy & Hold": df["bh"] * cap}))
 
 # ── price + จุดซื้อขาย (Altair) ──
 st.subheader("💹 ราคา + EMA + จุดซื้อ/ขาย")
