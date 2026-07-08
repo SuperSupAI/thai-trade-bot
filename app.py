@@ -6,7 +6,7 @@ import numpy as np
 import pandas as pd
 import streamlit as st
 import altair as alt
-from universe import SECTORS, group_symbols
+from universe import SECTORS, group_symbols, get_market_type
 
 
 def get_stock_sector(symbol):
@@ -447,6 +447,7 @@ if mode == "สแกนทั้งกลุ่ม":
             sym_clean = sym.replace(".BK", "")
             rows.append({
                 "หุ้น": sym_clean,
+                "ประเภท": get_market_type(sym),
                 "กลุ่ม": get_stock_sector(sym),
                 "ผลตอบแทน%": round(m["total"] * 100, 1),
                 "B&H%": round(m["bh"] * 100, 1),
@@ -471,17 +472,26 @@ if mode == "สแกนทั้งกลุ่ม":
     c2.metric("ชนะ Buy & Hold", f"{beat} / {len(res)}")
     c3.metric("ผลตอบแทนเฉลี่ย", f"{res['ผลตอบแทน%'].mean():+.1f}%")
 
+    # ตัวเลือก filter ประเภทหุ้น
+    all_types = sorted(res["ประเภท"].unique())
+    selected_types = st.multiselect("ประเภท", all_types, default=all_types, key="market_filter")
+    res_filtered = res[res["ประเภท"].isin(selected_types)]
+
+    if len(res_filtered) == 0:
+        st.error("ไม่มีหุ้นหลังจากกรองประเภท")
+        st.stop()
+
     # ตัวเลือกแสดงผล
     view_mode = st.radio("แสดงผล", ["ทั้งหมด (เรียงผลตอบแทน)", "แยกตามกลุ่มอุตสาหกรรม"], horizontal=True, key="view_mode_scan")
 
     if view_mode == "แยกตามกลุ่มอุตสาหกรรม":
         # แสดงแยกกลุ่ม
-        sectors_in_result = sorted(res["กลุ่ม"].unique())
+        sectors_in_result = sorted(res_filtered["กลุ่ม"].unique())
         for sector in sectors_in_result:
-            sector_data = res[res["กลุ่ม"] == sector].sort_values("ผลตอบแทน%", ascending=False)
+            sector_data = res_filtered[res_filtered["กลุ่ม"] == sector].sort_values("ผลตอบแทน%", ascending=False)
             sector_beat = (sector_data["ชนะ B&H"] == "✅").sum()
             with st.expander(f"📊 {sector} ({len(sector_data)} หุ้น) - เฉลี่ย {sector_data['ผลตอบแทน%'].mean():+.1f}% | ชนะ {sector_beat}/{len(sector_data)}"):
-                event = st.dataframe(sector_data.drop("กลุ่ม", axis=1), use_container_width=True, hide_index=True,
+                event = st.dataframe(sector_data.drop(["กลุ่ม", "ประเภท"], axis=1), use_container_width=True, hide_index=True,
                                    on_select="rerun", selection_mode="single-row", key=f"scan_tbl_{sector}")
                 sel = event.selection.rows if event and event.selection else []
                 if sel:
@@ -491,11 +501,11 @@ if mode == "สแกนทั้งกลุ่ม":
     else:
         # แสดงทั้งหมด
         st.caption("👉 คลิกที่แถวหุ้น เพื่อดูกราฟ+จุดซื้อขายของตัวนั้น · เรียงผลตอบแทนสูง→ต่ำ")
-        event = st.dataframe(res.drop("กลุ่ม", axis=1), use_container_width=True, hide_index=True,
+        event = st.dataframe(res_filtered.drop(["กลุ่ม", "ประเภท"], axis=1), use_container_width=True, hide_index=True,
                              on_select="rerun", selection_mode="single-row", key="scan_tbl")
         sel = event.selection.rows if event and event.selection else []
         if sel:
-            sym = res.iloc[sel[0]]["หุ้น"] + ".BK"
+            sym = res_filtered.iloc[sel[0]]["หุ้น"] + ".BK"
             st.divider()
             show_stock_detail(sym, closes[sym], setclose, fee, cap)
         else:

@@ -18,6 +18,20 @@ SECTORS = {
 }
 
 
+def get_market_type(symbol):
+    """แยก market type จาก symbol: 'Regular' (SET/mai) หรือ 'DR/Foreign' (special segments)"""
+    sym_clean = symbol.replace(".BK", "")
+    if sym_clean:
+        # Check last character
+        last_char = sym_clean[-1]
+        # ถ้า ending เป็น lowercase → DR/Foreign market
+        if last_char.islower():
+            return "DR/Foreign"
+        else:
+            return "Regular"
+    return "Regular"
+
+
 @st.cache_data(ttl=86400, show_spinner=False)  # Cache 1 วัน
 def get_all_set_stocks():
     """ดึงรายชื่อหุ้น SET ทั้งหมดจาก investpy (ประมาณ 900+ หุ้น)"""
