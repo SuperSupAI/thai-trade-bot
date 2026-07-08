@@ -21,6 +21,8 @@ def group_symbols(group):
     """คืน list สัญลักษณ์ (เติม .BK) ของกลุ่มที่เลือก · 'SET100' = รวมทุกกลุ่ม"""
     if group == "SET100 (ทั้งหมด)":
         syms = sorted({s for lst in SECTORS.values() for s in lst})
+    elif group == "SET Index":
+        return ["^SET.BK"]  # SET Index มี . อยู่แล้ว
     else:
         syms = SECTORS.get(group, [])
     return [s + ".BK" for s in syms]

@@ -257,7 +257,7 @@ with st.sidebar:
     if mode == "หุ้นเดียว":
         symbol = st.text_input("หุ้น (เช่น PIMO.BK)", "PIMO.BK").strip().upper()
     else:
-        group = st.selectbox("กลุ่ม", ["SET100 (ทั้งหมด)"] + list(SECTORS.keys()))
+        group = st.selectbox("กลุ่ม", ["SET100 (ทั้งหมด)", "SET Index"] + list(SECTORS.keys()))
         scan_style = st.radio("รูปแบบ", ["ดูรายตัว (ตาราง+คลิก)", "จัดพอร์ตหมุนเงิน (ไม่ให้ว่าง)"])
         n_slots = 1
         if scan_style.startswith("จัดพอร์ต"):
@@ -269,24 +269,57 @@ with st.sidebar:
 
     st.divider()
     st.subheader("📊 ตัวชี้วัดทางการเงิน (Fundamental)")
-    use_fundamental = st.checkbox("ใช้ Fundamental Filter", value=False)
+    st.caption("✅ เลือกเงื่อนไขที่ต้องการใช้")
     fundamental_criteria = {}
-    if use_fundamental:
-        col1, col2 = st.columns(2)
-        with col1:
-            max_pe = st.number_input("P/E Ratio <", value=20.0, step=1.0)
-            fundamental_criteria['max_pe'] = max_pe if max_pe else None
-            min_roe = st.number_input("ROE > %", value=15.0, step=1.0)
-            fundamental_criteria['min_roe'] = min_roe / 100 if min_roe else None
-            max_de = st.number_input("D/E Ratio <", value=1.0, step=0.1)
-            fundamental_criteria['max_de'] = max_de if max_de else None
-        with col2:
-            min_gross = st.number_input("Gross Margin > %", value=40.0, step=5.0)
-            fundamental_criteria['min_gross_margin'] = min_gross / 100 if min_gross else None
-            min_ebit = st.number_input("EBIT Margin > %", value=10.0, step=1.0)
-            fundamental_criteria['min_ebit_margin'] = min_ebit / 100 if min_ebit else None
-            min_eps = st.number_input("EPS Growth > %", value=10.0, step=1.0)
-            fundamental_criteria['min_eps_growth'] = min_eps / 100 if min_eps else None
+
+    # เปิด/ปิดแต่ละเงื่อนไข
+    col_chk1, col_val1 = st.columns([1, 2])
+    with col_chk1:
+        use_pe = st.checkbox("P/E Ratio", value=False, key="use_pe")
+    with col_val1:
+        if use_pe:
+            max_pe = st.number_input("< ", value=20.0, step=1.0, key="max_pe")
+            fundamental_criteria['max_pe'] = max_pe
+
+    col_chk2, col_val2 = st.columns([1, 2])
+    with col_chk2:
+        use_roe = st.checkbox("ROE", value=False, key="use_roe")
+    with col_val2:
+        if use_roe:
+            min_roe = st.number_input("% > ", value=15.0, step=1.0, key="min_roe")
+            fundamental_criteria['min_roe'] = min_roe / 100
+
+    col_chk3, col_val3 = st.columns([1, 2])
+    with col_chk3:
+        use_de = st.checkbox("D/E Ratio", value=False, key="use_de")
+    with col_val3:
+        if use_de:
+            max_de = st.number_input("< ", value=1.0, step=0.1, key="max_de")
+            fundamental_criteria['max_de'] = max_de
+
+    col_chk4, col_val4 = st.columns([1, 2])
+    with col_chk4:
+        use_gross = st.checkbox("Gross Margin", value=False, key="use_gross")
+    with col_val4:
+        if use_gross:
+            min_gross = st.number_input("% > ", value=40.0, step=5.0, key="min_gross")
+            fundamental_criteria['min_gross_margin'] = min_gross / 100
+
+    col_chk5, col_val5 = st.columns([1, 2])
+    with col_chk5:
+        use_ebit = st.checkbox("EBIT Margin", value=False, key="use_ebit")
+    with col_val5:
+        if use_ebit:
+            min_ebit = st.number_input("% > ", value=10.0, step=1.0, key="min_ebit")
+            fundamental_criteria['min_ebit_margin'] = min_ebit / 100
+
+    col_chk6, col_val6 = st.columns([1, 2])
+    with col_chk6:
+        use_eps = st.checkbox("EPS Growth", value=False, key="use_eps")
+    with col_val6:
+        if use_eps:
+            min_eps = st.number_input("% > ", value=10.0, step=1.0, key="min_eps")
+            fundamental_criteria['min_eps_growth'] = min_eps / 100
 
     run = st.button("🚀 รัน Backtest", type="primary", use_container_width=True)
 
