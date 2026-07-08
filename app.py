@@ -69,20 +69,31 @@ def build_and_sim(close, setclose, fee):
     ret = df["close"].pct_change().fillna(0).values
     e50 = df["ema50"].values
 
-    held, ep = 0.0, 0.0
-    strat, events, trade_ret = [], [], []
+    held, ep, run_eq, days_in = 0.0, 0.0, 1.0, 0
+    strat, events, trades, entry = [], [], [], None
     for i in range(len(df)):
+        if held > 0:
+            days_in += 1                           # วันที่เงินทำงาน (ถือหุ้นอยู่)
         r = held * ret[i]; ft = 0.0; price = c[i]
         if held > 0:
             chg = price / ep - 1
-            if chg <= -CUT:                       # initial stop loss
-                trade_ret.append(chg); events.append((i, "SELL·SL", price)); ft += fee; held = 0
-            elif price < e50[i]:                  # trailing: ราคาหลุด EMA50 = เทรนด์พัง (ปล่อยกำไรวิ่งจนถึงตรงนี้)
-                trade_ret.append(chg); events.append((i, "SELL·EMA50", price)); ft += fee; held = 0
+            reason = "SL -8%" if chg <= -CUT else ("หลุด EMA50" if price < e50[i] else None)
+            if reason:
+                ft += fee; held = 0
+                trades.append({**entry, "exit_i": i, "exit_price": price, "reason": reason,
+                               "pnl": price / entry["price"] - 1 - 2 * fee})
+                events.append((i, "SELL", price)); entry = None
         else:
             if cond[i]:
-                events.append((i, "BUY", price)); ft += fee; held = 1.0; ep = price
-        strat.append(r - ft)
+                ft += fee; held = 1.0; ep = price
+                entry = {"entry_i": i, "price": price, "eq": run_eq}
+                events.append((i, "BUY", price))
+        day_ret = r - ft; strat.append(day_ret); run_eq *= (1 + day_ret)
+
+    if held > 0 and entry:                         # ไม้ที่ยังถืออยู่ตอนจบ
+        trades.append({**entry, "exit_i": None, "exit_price": c[-1], "reason": "ยังถืออยู่",
+                       "pnl": c[-1] / entry["price"] - 1 - fee})
+
     df["equity"] = (1 + pd.Series(strat, index=df.index)).cumprod()
     df["bh"] = (1 + df["close"].pct_change().fillna(0)).cumprod()
 
@@ -91,8 +102,10 @@ def build_and_sim(close, setclose, fee):
         total=eq.iloc[-1] - 1, bh=df["bh"].iloc[-1] - 1,
         cagr=eq.iloc[-1] ** (1 / yrs) - 1 if yrs > 0 else 0,
         maxdd=(eq / eq.cummax() - 1).min(),
-        nbuy=sum(1 for e in events if e[1] == "BUY"),
-        wr=(len([t for t in trade_ret if t > 0]) / len(trade_ret) * 100) if trade_ret else 0,
+        nbuy=len(trades),
+        wr=(len([t for t in trades if t["pnl"] > 0]) / len(trades) * 100) if trades else 0,
+        time_in=days_in / len(df) * 100 if len(df) else 0,
+        trades=trades,
     )
     return df, events, m
 
@@ -109,9 +122,10 @@ def show_stock_detail(symbol, close, setclose, fee, cap):
     c2.metric("ผลตอบแทน (บอต)", f"{m['total']*100:+.1f}%", f"vs B&H {m['bh']*100:+.1f}%")
     c3.metric("CAGR / ปี", f"{m['cagr']*100:+.1f}%")
     c4.metric("Max Drawdown", f"{m['maxdd']*100:.1f}%")
-    c5, c6 = st.columns(2)
+    c5, c6, c7 = st.columns(3)
     c5.metric("Win rate", f"{m['wr']:.0f}%", f"{m['nbuy']} ไม้")
-    c6.metric("ถ้าถือเฉยๆ (B&H)", f"{cap*df['bh'].iloc[-1]:,.0f} ฿", f"{cap*m['bh']:+,.0f} ฿")
+    c6.metric("⏱️ เวลาเงินทำงาน", f"{m['time_in']:.0f}%", f"นอนเฉย {100-m['time_in']:.0f}%")
+    c7.metric("ถ้าถือเฉยๆ (B&H)", f"{cap*df['bh'].iloc[-1]:,.0f} ฿", f"{cap*m['bh']:+,.0f} ฿")
     if m["total"] > m["bh"]:
         st.success("✅ ชนะ Buy & Hold")
     else:
@@ -134,10 +148,28 @@ def show_stock_detail(symbol, close, setclose, fee, cap):
         layers.append(alt.Chart(mk[mk.act == "SELL"]).mark_point(shape="triangle-down", size=90, color="#f85149", filled=True).encode(x="date:T", y="price:Q"))
     st.altair_chart(alt.layer(*layers).interactive(), use_container_width=True)
 
-    st.subheader(f"🧾 รายการซื้อ/ขาย ({len(events)})")
-    if events:
-        st.dataframe(pd.DataFrame([{"วันที่": df.index[i].strftime("%Y-%m-%d"), "การกระทำ": a, "ราคา": round(p, 2)}
-                                  for (i, a, p) in events]), use_container_width=True, hide_index=True)
+    trades = m["trades"]
+    st.subheader(f"🧾 แต่ละไม้ที่เทรด ({len(trades)})")
+    if trades:
+        rows = []
+        for k, t in enumerate(trades, 1):
+            last = t["exit_i"] if t["exit_i"] is not None else len(df) - 1
+            rows.append({
+                "ไม้": k,
+                "ซื้อ": df.index[t["entry_i"]].strftime("%d/%m/%y"),
+                "ราคาซื้อ": round(t["entry_price"], 2),
+                "ขาย": (df.index[t["exit_i"]].strftime("%d/%m/%y") if t["exit_i"] is not None else "ยังถือ"),
+                "ราคาขาย": round(t["exit_price"], 2),
+                "ถือ(วัน)": last - t["entry_i"],
+                "เหตุออก": t["reason"],
+                "กำไร%": round(t["pnl"] * 100, 1),
+                "กำไร(บาท)": round(cap * t["eq"] * t["pnl"]),
+            })
+        tdf = pd.DataFrame(rows)
+        st.dataframe(tdf, use_container_width=True, hide_index=True)
+        w = len([t for t in trades if t["pnl"] > 0]); l = len(trades) - w
+        st.caption(f"กำไร {w} ไม้ · ขาดทุน {l} ไม้ · กำไรรวมจากตาราง ~{tdf['กำไร(บาท)'].sum():+,.0f} ฿ "
+                   f"(บาทต่อไม้คิดจากเงินที่ทบต้น ณ ตอนนั้น)")
     else:
         st.info("ไม่มีสัญญาณเข้าในช่วงนี้")
 
