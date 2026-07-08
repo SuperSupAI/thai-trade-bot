@@ -7,6 +7,15 @@ import pandas as pd
 import streamlit as st
 import altair as alt
 from universe import SECTORS, group_symbols
+
+
+def get_stock_sector(symbol):
+    """หาว่าหุ้นนี้อยู่กลุ่มไหน"""
+    sym_clean = symbol.replace(".BK", "")
+    for sector, stocks in SECTORS.items():
+        if sym_clean in stocks:
+            return sector
+    return "อื่นๆ"
 from fundamentals import get_fundamentals, passes_fundamental_filter, format_ratio
 
 st.set_page_config(page_title="Thai Trade Bot — Backtest", page_icon="🤖", layout="wide")
@@ -435,8 +444,10 @@ if mode == "สแกนทั้งกลุ่ม":
                     continue
 
             _, _, m = build_and_sim(c, setclose, fee)
+            sym_clean = sym.replace(".BK", "")
             rows.append({
-                "หุ้น": sym.replace(".BK", ""),
+                "หุ้น": sym_clean,
+                "กลุ่ม": get_stock_sector(sym),
                 "ผลตอบแทน%": round(m["total"] * 100, 1),
                 "B&H%": round(m["bh"] * 100, 1),
                 "ชนะ B&H": "✅" if m["total"] > m["bh"] else "",
@@ -459,16 +470,36 @@ if mode == "สแกนทั้งกลุ่ม":
     c1.metric("หุ้นที่ทดสอบ", len(res))
     c2.metric("ชนะ Buy & Hold", f"{beat} / {len(res)}")
     c3.metric("ผลตอบแทนเฉลี่ย", f"{res['ผลตอบแทน%'].mean():+.1f}%")
-    st.caption("👉 คลิกที่แถวหุ้น เพื่อดูกราฟ+จุดซื้อขายของตัวนั้น · เรียงผลตอบแทนสูง→ต่ำ")
-    event = st.dataframe(res, use_container_width=True, hide_index=True,
-                         on_select="rerun", selection_mode="single-row", key="scan_tbl")
-    sel = event.selection.rows if event and event.selection else []
-    if sel:
-        sym = res.iloc[sel[0]]["หุ้น"] + ".BK"
-        st.divider()
-        show_stock_detail(sym, closes[sym], setclose, fee, cap)
+
+    # ตัวเลือกแสดงผล
+    view_mode = st.radio("แสดงผล", ["ทั้งหมด (เรียงผลตอบแทน)", "แยกตามกลุ่มอุตสาหกรรม"], horizontal=True, key="view_mode_scan")
+
+    if view_mode == "แยกตามกลุ่มอุตสาหกรรม":
+        # แสดงแยกกลุ่ม
+        sectors_in_result = sorted(res["กลุ่ม"].unique())
+        for sector in sectors_in_result:
+            sector_data = res[res["กลุ่ม"] == sector].sort_values("ผลตอบแทน%", ascending=False)
+            sector_beat = (sector_data["ชนะ B&H"] == "✅").sum()
+            with st.expander(f"📊 {sector} ({len(sector_data)} หุ้น) - เฉลี่ย {sector_data['ผลตอบแทน%'].mean():+.1f}% | ชนะ {sector_beat}/{len(sector_data)}"):
+                event = st.dataframe(sector_data.drop("กลุ่ม", axis=1), use_container_width=True, hide_index=True,
+                                   on_select="rerun", selection_mode="single-row", key=f"scan_tbl_{sector}")
+                sel = event.selection.rows if event and event.selection else []
+                if sel:
+                    sym = sector_data.iloc[sel[0]]["หุ้น"] + ".BK"
+                    st.divider()
+                    show_stock_detail(sym, closes[sym], setclose, fee, cap)
     else:
-        st.info("👆 คลิกแถวหุ้นในตารางเพื่อดูรายละเอียด")
+        # แสดงทั้งหมด
+        st.caption("👉 คลิกที่แถวหุ้น เพื่อดูกราฟ+จุดซื้อขายของตัวนั้น · เรียงผลตอบแทนสูง→ต่ำ")
+        event = st.dataframe(res.drop("กลุ่ม", axis=1), use_container_width=True, hide_index=True,
+                             on_select="rerun", selection_mode="single-row", key="scan_tbl")
+        sel = event.selection.rows if event and event.selection else []
+        if sel:
+            sym = res.iloc[sel[0]]["หุ้น"] + ".BK"
+            st.divider()
+            show_stock_detail(sym, closes[sym], setclose, fee, cap)
+        else:
+            st.info("👆 คลิกแถวหุ้นในตารางเพื่อดูรายละเอียด")
     st.caption("⚠️ backtest ≠ ผลจริง · กัน overfit: ลองหลายช่วงเวลา · Sandbox ≤10%")
     st.stop()
 
