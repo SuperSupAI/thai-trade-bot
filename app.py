@@ -13,7 +13,7 @@ st.title("🤖 Thai Trade Bot — Backtest")
 st.caption("ทดสอบกลยุทธ์บนข้อมูลอดีต · เทียบ Buy & Hold · เพื่อการเรียนรู้ ไม่ใช่คำแนะนำลงทุน")
 
 SET_SYMBOL = "^SET.BK"
-CUT, TP1, TP_HALF = 0.05, 0.10, 0.15
+CUT = 0.08   # initial stop loss (กว้างขึ้น กัน noise) · หลังมีกำไรใช้ trailing EMA50
 
 
 # ── data / indicators ──
@@ -67,25 +67,21 @@ def build_and_sim(close, setclose, fee):
 
     c = df["close"].values
     ret = df["close"].pct_change().fillna(0).values
-    rsi_v = df["rsi"].values; e10 = df["ema10"].values; e50 = df["ema50"].values
+    e50 = df["ema50"].values
 
-    held, ep, half = 0.0, 0.0, False
-    strat, events, trade_ret, cur = [], [], [], 0.0
+    held, ep = 0.0, 0.0
+    strat, events, trade_ret = [], [], []
     for i in range(len(df)):
         r = held * ret[i]; ft = 0.0; price = c[i]
         if held > 0:
             chg = price / ep - 1
-            if chg <= -CUT:
-                cur += held * chg; trade_ret.append(cur); events.append((i, "SELL·SL", price)); ft += held * fee; held = 0; half = False
-            elif chg >= TP1 and rsi_v[i] >= 80:
-                cur += held * chg; trade_ret.append(cur); events.append((i, "SELL·TP", price)); ft += held * fee; held = 0; half = False
-            elif chg >= TP_HALF and not half and held >= 1.0:
-                cur += 0.5 * chg; events.append((i, "SELL·½", price)); ft += 0.5 * fee; held = 0.5; half = True
-            elif e10[i] < e50[i]:
-                cur += held * chg; trade_ret.append(cur); events.append((i, "SELL·trend", price)); ft += held * fee; held = 0; half = False
+            if chg <= -CUT:                       # initial stop loss
+                trade_ret.append(chg); events.append((i, "SELL·SL", price)); ft += fee; held = 0
+            elif price < e50[i]:                  # trailing: ราคาหลุด EMA50 = เทรนด์พัง (ปล่อยกำไรวิ่งจนถึงตรงนี้)
+                trade_ret.append(chg); events.append((i, "SELL·EMA50", price)); ft += fee; held = 0
         else:
             if cond[i]:
-                events.append((i, "BUY", price)); ft += fee; held = 1.0; ep = price; half = False; cur = 0.0
+                events.append((i, "BUY", price)); ft += fee; held = 1.0; ep = price
         strat.append(r - ft)
     df["equity"] = (1 + pd.Series(strat, index=df.index)).cumprod()
     df["bh"] = (1 + df["close"].pct_change().fillna(0)).cumprod()
@@ -117,7 +113,7 @@ with st.sidebar:
 st.markdown("""
 **กลยุทธ์ ① — EMA Trend + SET Filter**
 - **เข้า** (ครบทุกข้อ): หุ้น `Close>EMA200` · `EMA10>EMA50` · `EMA50>EMA200` · `MACD>0` **และ** SET `Close>EMA200` · `EMA10>EMA50` · `EMA50>EMA200`
-- **ออก**: Cut Loss `-5%` · `+10%` (RSI≥80 ขาย / <80 ปล่อยวิ่ง) · `+15%` ขายครึ่ง · เทรนด์พัง (EMA10<EMA50) ขายที่เหลือ
+- **ออก (ขี่เทรนด์ ปล่อยกำไรวิ่ง)**: Cut Loss `-8%` (เริ่มต้น) · หลังมีกำไร → **ถือจนราคาหลุด `EMA50`** (trailing) จึงขาย
 """)
 
 if not run:
