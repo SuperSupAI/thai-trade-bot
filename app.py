@@ -187,21 +187,21 @@ def show_stock_detail(symbol, close, setclose, fee, cap, use_scaling=False):
     else:
         st.warning("❌ แพ้ Buy & Hold")
 
-    # แสดง Fundamental Data
-    st.subheader("📈 ตัวชี้วัดทางการเงิน")
-    fund = get_fundamentals(symbol)
-    if fund:
-        fc1, fc2, fc3, fc4, fc5 = st.columns(5)
-        fc1.metric("P/E", format_ratio(fund.get('pe_ratio'), ".2f"))
-        fc2.metric("ROE", format_ratio(fund.get('roe'), ".2%"))
-        fc3.metric("D/E", format_ratio(fund.get('de_ratio'), ".2f"))
-        fc4.metric("Gross Margin", format_ratio(fund.get('gross_margin'), ".2%"))
-        fc5.metric("EPS Growth", format_ratio(fund.get('eps_growth'), ".2%"))
-        fc6, fc7 = st.columns(2)
-        fc6.metric("EBIT Margin", format_ratio(fund.get('ebit_margin'), ".2%"))
-        fc7.metric("Profit Margin", format_ratio(fund.get('profit_margin'), ".2%"))
-    else:
-        st.info("ไม่มีข้อมูล fundamental")
+    # แสดง Fundamental Data (Expander)
+    with st.expander("📈 ตัวชี้วัดทางการเงิน", expanded=True):
+        fund = get_fundamentals(symbol)
+        if fund:
+            fc1, fc2, fc3, fc4, fc5 = st.columns(5)
+            fc1.metric("P/E", format_ratio(fund.get('pe_ratio'), ".2f"))
+            fc2.metric("ROE", format_ratio(fund.get('roe'), ".2%"))
+            fc3.metric("D/E", format_ratio(fund.get('de_ratio'), ".2f"))
+            fc4.metric("Gross Margin", format_ratio(fund.get('gross_margin'), ".2%"))
+            fc5.metric("EPS Growth", format_ratio(fund.get('eps_growth'), ".2%"))
+            fc6, fc7 = st.columns(2)
+            fc6.metric("EBIT Margin", format_ratio(fund.get('ebit_margin'), ".2%"))
+            fc7.metric("Profit Margin", format_ratio(fund.get('profit_margin'), ".2%"))
+        else:
+            st.info("ไม่มีข้อมูล fundamental")
 
     st.subheader("📈 มูลค่าเงินต้นตามเวลา (บาท)")
     comp = {"บอต": df["equity"] * cap, "ถือหุ้นนี้ (B&H)": df["bh"] * cap}
@@ -565,7 +565,7 @@ if mode == "สแกนทั้งกลุ่ม":
                     show_stock_detail(sym, closes[sym], setclose, fee, cap, use_scaling)
     else:
         # แสดงทั้งหมด
-        st.caption("👉 คลิกที่แถวหุ้น เพื่อดูกราฟ+จุดซื้อขายของตัวนั้น · เรียงผลตอบแทนสูง→ต่ำ")
+        st.caption("👉 คลิกแถวหุ้น → ขึ้นกราฟ + จุดซื้อขายทันที (ไม่ต้องกด Run อีกที) · เรียงผลตอบแทนสูง→ต่ำ")
         event = st.dataframe(res_filtered.drop(["กลุ่ม", "ประเภท"], axis=1), use_container_width=True, hide_index=True,
                              on_select="rerun", selection_mode="single-row", key="scan_tbl")
         sel = event.selection.rows if event and event.selection else []
@@ -573,8 +573,6 @@ if mode == "สแกนทั้งกลุ่ม":
             sym = res_filtered.iloc[sel[0]]["หุ้น"] + ".BK"
             st.divider()
             show_stock_detail(sym, closes[sym], setclose, fee, cap, use_scaling)
-        else:
-            st.info("👆 คลิกแถวหุ้นในตารางเพื่อดูรายละเอียด")
     st.caption("⚠️ backtest ≠ ผลจริง · กัน overfit: ลองหลายช่วงเวลา · Sandbox ≤10%")
     st.stop()
 
