@@ -143,7 +143,8 @@ def build_and_sim(close, setclose, fee, use_scaling=False, use_ema_cross=False, 
     else:
         stock_ok = (df["close"] > df["ema200"]) & (df["ema10"] > df["ema50"]) \
             & (df["ema50"] > df["ema200"]) & (df["macd"] > 0)
-    if setclose is not None:
+    if setclose is not None and not use_hh_hl:
+        # HH-HL Breakout ไม่ใช้ SET filter — เป็น price action ของหุ้นล้วนๆ
         s = setclose.reindex(df.index).ffill()
         set_ok = (s > ema(s, 200)) & (ema(s, 10) > ema(s, 50)) & (ema(s, 50) > ema(s, 200))
         cond = (stock_ok & set_ok).values
@@ -429,6 +430,7 @@ with st.sidebar:
                             "(ไม่บังคับ EMA50>EMA200 ฝั่งหุ้น เพราะตอนตัดขึ้นมักยังไม่ทัน)\n\n"
                             "แบบที่ 3: เข้าตอนราคาทะลุ Swing High (breakout) หลังเกิดแพทเทิร์น Higher-High/"
                             "Higher-Low ติดกัน 2 ชุด — เป็น price action ล้วน ไม่ใช้เงื่อนไข EMA ฝั่งหุ้น "
+                            "และไม่ใช้เงื่อนไข SET เลย "
                             "(Low ชุดที่ 2 ยังนับเป็น Higher Low ได้ถ้าต่ำกว่า Low ชุดแรกไม่เกิน 5%)")
     use_ema_cross = entry_strategy == "EMA50 ตัดขึ้น EMA100 + Trend Filter"
     use_hh_hl = entry_strategy == "HH-HL Breakout (2 ชุดติดกัน)"
@@ -520,8 +522,7 @@ else:
 
 if effective_hh_hl:
     entry_desc = ("แพทเทิร์น **Higher-High / Higher-Low 2 ชุดติดกัน** (Low ชุด 2 ต่ำกว่าชุดแรกได้ไม่เกิน `5%`) "
-                  "แล้วราคาทะลุ Swing High ล่าสุด (breakout) "
-                  "**และ** SET `Close>EMA200` · `EMA10>EMA50` · `EMA50>EMA200`")
+                  "แล้วราคาทะลุ Swing High ล่าสุด (breakout) — **ไม่ใช้เงื่อนไข SET** (price action ของหุ้นล้วนๆ)")
 elif effective_ema_cross:
     entry_desc = ("วันที่ `EMA50` ตัดขึ้น `EMA100` **และ** หุ้น `Close>EMA200` · `EMA10>EMA50` · `MACD>0` "
                   "**และ** SET `Close>EMA200` · `EMA10>EMA50` · `EMA50>EMA200`")
