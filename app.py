@@ -213,35 +213,30 @@ def show_stock_detail(symbol, close, setclose, fee, cap, use_scaling=False):
     st.line_chart(pd.DataFrame(comp))
 
     st.subheader("💹 ราคา + EMA + MACD + จุดซื้อ/ขาย")
+    pdf = pd.DataFrame({"date": df.index, "close": df["close"].values,
+                        "EMA50": df["ema50"].values, "EMA200": df["ema200"].values, "macd": df["macd"].values})
 
-    # สร้าง Tab สำหรับ Price chart และ MACD
-    tab1, tab2 = st.tabs(["ราคา + EMA", "MACD"])
+    # ราคา + EMA
+    line = alt.Chart(pdf).mark_line(color="#9aa4b2").encode(x="date:T", y=alt.Y("close:Q", title="ราคา"))
+    e50 = alt.Chart(pdf).mark_line(color="#3fb950", strokeDash=[4, 3]).encode(x="date:T", y="EMA50:Q")
+    e200 = alt.Chart(pdf).mark_line(color="#f0883e", strokeDash=[4, 3]).encode(x="date:T", y="EMA200:Q")
 
-    # Tab 1: ราคา + EMA
-    with tab1:
-        pdf = pd.DataFrame({"date": df.index, "close": df["close"].values,
-                            "EMA50": df["ema50"].values, "EMA200": df["ema200"].values})
-        line = alt.Chart(pdf).mark_line(color="#9aa4b2").encode(x="date:T", y=alt.Y("close:Q", title="ราคา"))
-        e50 = alt.Chart(pdf).mark_line(color="#3fb950", strokeDash=[4, 3]).encode(x="date:T", y="EMA50:Q")
-        e200 = alt.Chart(pdf).mark_line(color="#f0883e", strokeDash=[4, 3]).encode(x="date:T", y="EMA200:Q")
-        mk = pd.DataFrame([{"date": df.index[i], "price": p, "act": "BUY" if a == "BUY" else "SELL"}
-                           for (i, a, p) in events])
-        layers = [line, e50, e200]
-        if not mk.empty:
-            layers.append(alt.Chart(mk[mk.act == "BUY"]).mark_point(shape="triangle-up", size=90, color="#2ea043", filled=True).encode(x="date:T", y="price:Q"))
-            layers.append(alt.Chart(mk[mk.act == "SELL"]).mark_point(shape="triangle-down", size=90, color="#f85149", filled=True).encode(x="date:T", y="price:Q"))
-        st.altair_chart(alt.layer(*layers).interactive(), use_container_width=True)
+    mk = pd.DataFrame([{"date": df.index[i], "price": p, "act": "BUY" if a == "BUY" else "SELL"}
+                       for (i, a, p) in events])
+    layers = [line, e50, e200]
+    if not mk.empty:
+        layers.append(alt.Chart(mk[mk.act == "BUY"]).mark_point(shape="triangle-up", size=90, color="#2ea043", filled=True).encode(x="date:T", y="price:Q"))
+        layers.append(alt.Chart(mk[mk.act == "SELL"]).mark_point(shape="triangle-down", size=90, color="#f85149", filled=True).encode(x="date:T", y="price:Q"))
+    price_chart = alt.layer(*layers).properties(height=300)
 
-    # Tab 2: MACD
-    with tab2:
-        macd_df = pd.DataFrame({"date": df.index, "macd": df["macd"].values})
-        macd_line = alt.Chart(macd_df).mark_line(color="#1f77b4").encode(
-            x="date:T",
-            y=alt.Y("macd:Q", title="MACD")
-        )
-        # เพิ่มเส้น 0
-        zero_line = alt.Chart(pd.DataFrame({"y": [0]})).mark_rule(color="#666", strokeDash=[2, 2]).encode(y="y:Q")
-        st.altair_chart((macd_line + zero_line).interactive(), use_container_width=True)
+    # MACD ใต้ราคา
+    macd_line = alt.Chart(pdf).mark_line(color="#1f77b4").encode(x="date:T", y=alt.Y("macd:Q", title="MACD"))
+    zero_line = alt.Chart(pd.DataFrame({"y": [0]})).mark_rule(color="#666", strokeDash=[2, 2]).encode(y="y:Q")
+    macd_chart = (macd_line + zero_line).properties(height=150)
+
+    # รวมกราฟ
+    combined = alt.vconcat(price_chart, macd_chart).resolve_scale(x='shared')
+    st.altair_chart(combined.interactive(), use_container_width=True)
 
     trades = m["trades"]
     st.subheader(f"🧾 แต่ละไม้ที่เทรด ({len(trades)})")
