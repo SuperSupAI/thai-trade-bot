@@ -77,10 +77,11 @@ def find_pivots(close, lookback=3):
     return is_high, is_low
 
 
-def find_hh_hl_breakout_signal(close, lookback=3):
+def find_hh_hl_breakout_signal(close, lookback=3, low_tolerance=0.05):
     """
     หาแพทเทิร์น Higher-High/Higher-Low 2 ชุดติดกัน แล้วออกสัญญาณตอนราคาทะลุ Swing High ล่าสุด (breakout)
     stage: 0=รอ Low1 · 1=มี Low1 รอ High1 · 2=มี High1 รอ Low2(HL) · 3=มี Low2 รอ High2(HH) · 4=armed รอ breakout
+    low_tolerance: Low2 ยังถือว่าเป็น Higher Low ได้ ถ้าต่ำกว่า Low1 ไม่เกินสัดส่วนนี้ (กันหลุดโดย noise เล็กน้อย)
     """
     c = close.values
     n = len(c)
@@ -106,7 +107,7 @@ def find_hh_hl_breakout_signal(close, lookback=3):
             elif stage == 1 and price < low1:
                 low1 = price
             elif stage == 2:
-                if price > low1:
+                if price >= low1 * (1 - low_tolerance):
                     low2, stage = price, 3
                 else:
                     low1, stage = price, 1
@@ -427,7 +428,8 @@ with st.sidebar:
                        help="แบบที่ 2: เข้าเฉพาะวันที่ EMA50 ตัดขึ้น EMA100 (ครั้งแรก) + Close>EMA200 · EMA10>EMA50 · MACD>0 "
                             "(ไม่บังคับ EMA50>EMA200 ฝั่งหุ้น เพราะตอนตัดขึ้นมักยังไม่ทัน)\n\n"
                             "แบบที่ 3: เข้าตอนราคาทะลุ Swing High (breakout) หลังเกิดแพทเทิร์น Higher-High/"
-                            "Higher-Low ติดกัน 2 ชุด — เป็น price action ล้วน ไม่ใช้เงื่อนไข EMA ฝั่งหุ้น")
+                            "Higher-Low ติดกัน 2 ชุด — เป็น price action ล้วน ไม่ใช้เงื่อนไข EMA ฝั่งหุ้น "
+                            "(Low ชุดที่ 2 ยังนับเป็น Higher Low ได้ถ้าต่ำกว่า Low ชุดแรกไม่เกิน 5%)")
     use_ema_cross = entry_strategy == "EMA50 ตัดขึ้น EMA100 + Trend Filter"
     use_hh_hl = entry_strategy == "HH-HL Breakout (2 ชุดติดกัน)"
 
@@ -517,7 +519,8 @@ else:
     effective_hh_hl = use_hh_hl
 
 if effective_hh_hl:
-    entry_desc = ("แพทเทิร์น **Higher-High / Higher-Low 2 ชุดติดกัน** แล้วราคาทะลุ Swing High ล่าสุด (breakout) "
+    entry_desc = ("แพทเทิร์น **Higher-High / Higher-Low 2 ชุดติดกัน** (Low ชุด 2 ต่ำกว่าชุดแรกได้ไม่เกิน `5%`) "
+                  "แล้วราคาทะลุ Swing High ล่าสุด (breakout) "
                   "**และ** SET `Close>EMA200` · `EMA10>EMA50` · `EMA50>EMA200`")
 elif effective_ema_cross:
     entry_desc = ("วันที่ `EMA50` ตัดขึ้น `EMA100` **และ** หุ้น `Close>EMA200` · `EMA10>EMA50` · `MACD>0` "
