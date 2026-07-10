@@ -67,12 +67,14 @@ def build_and_sim(close, setclose, fee, use_scaling=False, use_ema_cross=False):
     df["ema5"] = ema(close, 5); df["ema10"] = ema(close, 10); df["ema50"] = ema(close, 50)
     df["ema100"] = ema(close, 100); df["ema200"] = ema(close, 200)
     df["rsi"] = rsi(close); df["macd"] = ema(close, 12) - ema(close, 26)
-    stock_ok = (df["close"] > df["ema200"]) & (df["ema10"] > df["ema50"]) \
-        & (df["ema50"] > df["ema200"]) & (df["macd"] > 0)
     if use_ema_cross:
-        # เข้าเฉพาะวันที่ EMA50 ตัดขึ้น EMA100 (ครั้งแรก)
+        # เข้าเฉพาะวันที่ EMA50 ตัดขึ้น EMA100 (ครั้งแรก) — ไม่บังคับ EMA50>EMA200 ฝั่งหุ้น
+        # เพราะตอนตัดขึ้น EMA50 มักยังไม่ทัน EMA200 (เส้นช้ากว่า)
         cross_up = (df["ema50"] > df["ema100"]) & (df["ema50"].shift(1) <= df["ema100"].shift(1))
-        stock_ok = stock_ok & cross_up
+        stock_ok = (df["close"] > df["ema200"]) & (df["ema10"] > df["ema50"]) & (df["macd"] > 0) & cross_up
+    else:
+        stock_ok = (df["close"] > df["ema200"]) & (df["ema10"] > df["ema50"]) \
+            & (df["ema50"] > df["ema200"]) & (df["macd"] > 0)
     if setclose is not None:
         s = setclose.reindex(df.index).ffill()
         set_ok = (s > ema(s, 200)) & (ema(s, 10) > ema(s, 50)) & (ema(s, 50) > ema(s, 200))
@@ -354,7 +356,8 @@ with st.sidebar:
     st.subheader("🎯 กลยุทธ์ ENTRY (เข้า)")
     entry_strategy = st.radio("เลือกเงื่อนไขเข้า",
                        ["Default (EMA10>50>200 + MACD>0)", "EMA50 ตัดขึ้น EMA100 + Trend Filter"],
-                       help="แบบที่ 2: เข้าเฉพาะวันที่ EMA50 ตัดขึ้น EMA100 (ครั้งแรก) ร่วมกับเงื่อนไขเทรนด์เดิม")
+                       help="แบบที่ 2: เข้าเฉพาะวันที่ EMA50 ตัดขึ้น EMA100 (ครั้งแรก) + Close>EMA200 · EMA10>EMA50 · MACD>0 "
+                            "(ไม่บังคับ EMA50>EMA200 ฝั่งหุ้น เพราะตอนตัดขึ้นมักยังไม่ทัน)")
     use_ema_cross = entry_strategy == "EMA50 ตัดขึ้น EMA100 + Trend Filter"
 
     st.divider()
@@ -441,7 +444,7 @@ else:
     effective_ema_cross = use_ema_cross
 
 if effective_ema_cross:
-    entry_desc = ("วันที่ `EMA50` ตัดขึ้น `EMA100` **และ** หุ้น `Close>EMA200` · `EMA10>EMA50` · `EMA50>EMA200` · `MACD>0` "
+    entry_desc = ("วันที่ `EMA50` ตัดขึ้น `EMA100` **และ** หุ้น `Close>EMA200` · `EMA10>EMA50` · `MACD>0` "
                   "**และ** SET `Close>EMA200` · `EMA10>EMA50` · `EMA50>EMA200`")
 else:
     entry_desc = ("หุ้น `Close>EMA200` · `EMA10>EMA50` · `EMA50>EMA200` · `MACD>0` "
