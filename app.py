@@ -405,8 +405,8 @@ with st.sidebar:
 qp = st.query_params
 is_deep_link = "sym" in qp
 if is_deep_link:
-    sym_q = qp.get("sym", "").upper()
-    if sym_q and not sym_q.endswith(".BK"):
+    sym_q = qp.get("sym", "")
+    if sym_q and not sym_q.upper().endswith(".BK"):
         sym_q += ".BK"
     years_q = int(qp.get("years", "5"))
     cap_q = float(qp.get("cap", "50000"))
@@ -580,35 +580,43 @@ if mode == "สแกนทั้งกลุ่ม":
     # ตัวเลือกแสดงผล
     view_mode = st.radio("แสดงผล", ["ทั้งหมด (เรียงผลตอบแทน)", "แยกตามกลุ่มอุตสาหกรรม"], horizontal=True, key="view_mode_scan")
 
+    def render_scan_table(data):
+        """ตารางผลสแกน: คอลัมน์ 'หุ้น' เป็นลิงก์ <a target=_blank> จริง คลิกแล้วเปิดแท็บใหม่ทันที"""
+        import html as html_lib
+        cols = ["หุ้น", "ผลตอบแทน%", "B&H%", "ชนะ B&H", "ไม้", "Win%", "MaxDD%", "กำไร(บาท)"]
+        header = "".join(
+            f'<th style="text-align:{"left" if c == "หุ้น" else "right"};padding:6px 10px;'
+            f'border-bottom:2px solid rgba(128,128,128,.4);white-space:nowrap;">{c}</th>'
+            for c in cols
+        )
+        rows_html = []
+        for _, r in data.iterrows():
+            sym = str(r["หุ้น"])
+            url = f"?sym={sym}&years={int(years)}&cap={cap:.0f}&fee={fee}&scaling={1 if use_scaling else 0}"
+            tds = [f'<td style="padding:6px 10px;"><a href="{html_lib.escape(url)}" target="_blank" '
+                   f'style="color:#3fa7ff;text-decoration:none;font-weight:600;">{html_lib.escape(sym)}</a></td>']
+            for c in cols[1:]:
+                tds.append(f'<td style="text-align:right;padding:6px 10px;white-space:nowrap;">{html_lib.escape(str(r[c]))}</td>')
+            rows_html.append(f'<tr style="border-bottom:1px solid rgba(128,128,128,.15);">{"".join(tds)}</tr>')
+        st.markdown(
+            f'<div style="overflow-x:auto;"><table style="width:100%;border-collapse:collapse;font-size:14px;">'
+            f'<thead><tr>{header}</tr></thead><tbody>{"".join(rows_html)}</tbody></table></div>',
+            unsafe_allow_html=True,
+        )
+
     if view_mode == "แยกตามกลุ่มอุตสาหกรรม":
         # แสดงแยกกลุ่ม
+        st.caption("👉 คลิกที่ชื่อหุ้น → กราฟเด้งขึ้นแท็บใหม่ทันที (ใช้เงื่อนไข/กลยุทธ์เดียวกับที่ตั้งไว้)")
         sectors_in_result = sorted(res_filtered["กลุ่ม"].unique())
         for sector in sectors_in_result:
             sector_data = res_filtered[res_filtered["กลุ่ม"] == sector].sort_values("ผลตอบแทน%", ascending=False)
             sector_beat = (sector_data["ชนะ B&H"] == "✅").sum()
             with st.expander(f"📊 {sector} ({len(sector_data)} หุ้น) - เฉลี่ย {sector_data['ผลตอบแทน%'].mean():+.1f}% | ชนะ {sector_beat}/{len(sector_data)}", expanded=True):
-                st.dataframe(sector_data.drop(["กลุ่ม", "ประเภท"], axis=1), use_container_width=True, hide_index=True, key=f"scan_tbl_{sector}")
-                c1, c2 = st.columns([3, 1])
-                with c1:
-                    sector_sym = st.selectbox("เลือกหุ้น",
-                                             options=sector_data["หุ้น"].tolist(),
-                                             key=f"sym_select_{sector}")
-                with c2:
-                    sector_url = f"?sym={sector_sym}&years={int(years)}&cap={cap:.0f}&fee={fee}&scaling={1 if use_scaling else 0}"
-                    st.link_button("📊 เปิดกราฟ (แท็บใหม่)", sector_url, use_container_width=True)
+                render_scan_table(sector_data)
     else:
         # แสดงทั้งหมด
-        st.caption("👉 เลือกหุ้น → กด เปิดกราฟ (ขึ้นแท็บใหม่ ใช้เงื่อนไข/กลยุทธ์เดียวกับที่ตั้งไว้) · เรียงผลตอบแทนสูง→ต่ำ")
-        st.dataframe(res_filtered.drop(["กลุ่ม", "ประเภท"], axis=1), use_container_width=True, hide_index=True, key="scan_tbl")
-
-        c1, c2 = st.columns([3, 1])
-        with c1:
-            selected_sym = st.selectbox("เลือกหุ้นเพื่อดูรายละเอียด",
-                                       options=res_filtered["หุ้น"].tolist(),
-                                       key="sym_select")
-        with c2:
-            selected_url = f"?sym={selected_sym}&years={int(years)}&cap={cap:.0f}&fee={fee}&scaling={1 if use_scaling else 0}"
-            st.link_button("📊 เปิดกราฟ (แท็บใหม่)", selected_url, use_container_width=True, type="primary")
+        st.caption("👉 คลิกที่ชื่อหุ้น → กราฟเด้งขึ้นแท็บใหม่ทันที (ใช้เงื่อนไข/กลยุทธ์เดียวกับที่ตั้งไว้) · เรียงผลตอบแทนสูง→ต่ำ")
+        render_scan_table(res_filtered)
     st.caption("⚠️ backtest ≠ ผลจริง · กัน overfit: ลองหลายช่วงเวลา · Sandbox ≤10%")
     st.stop()
 
