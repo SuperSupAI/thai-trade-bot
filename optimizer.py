@@ -67,12 +67,10 @@ def optimize_parameters(close, setclose=None, fee=0.002):
             for i in range(len(df)):
                 price = c[i]
                 r = held * ret[i]
+                should_exit = False           # ต้องตั้งทุกวัน (กัน UnboundLocalError ตอนไม่ถือหุ้น)
 
                 if held > 0:
                     chg = price / ep - 1
-
-                    # Exit checks
-                    should_exit = False
                     reason = None
 
                     if chg <= exit_cfg["sl"]:
