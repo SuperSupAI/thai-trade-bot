@@ -62,12 +62,79 @@ def rsi(s, p=14):
     return (100 - 100 / (1 + up / dn.replace(0, np.nan))).fillna(50)
 
 
-def build_and_sim(close, setclose, fee, use_scaling=False, use_ema_cross=False):
+def find_pivots(close, lookback=3):
+    """หา pivot high/low แบบ fractal — pivot ที่ index i ยืนยันได้ก็ต่อเมื่อผ่านไปแล้ว lookback แท่ง (กัน lookahead)"""
+    c = close.values
+    n = len(c)
+    is_high = np.zeros(n, dtype=bool)
+    is_low = np.zeros(n, dtype=bool)
+    for i in range(lookback, n - lookback):
+        window = c[i - lookback:i + lookback + 1]
+        if c[i] == window.max() and (window == c[i]).sum() == 1:
+            is_high[i] = True
+        if c[i] == window.min() and (window == c[i]).sum() == 1:
+            is_low[i] = True
+    return is_high, is_low
+
+
+def find_hh_hl_breakout_signal(close, lookback=3):
+    """
+    หาแพทเทิร์น Higher-High/Higher-Low 2 ชุดติดกัน แล้วออกสัญญาณตอนราคาทะลุ Swing High ล่าสุด (breakout)
+    stage: 0=รอ Low1 · 1=มี Low1 รอ High1 · 2=มี High1 รอ Low2(HL) · 3=มี Low2 รอ High2(HH) · 4=armed รอ breakout
+    """
+    c = close.values
+    n = len(c)
+    is_high, is_low = find_pivots(close, lookback)
+    signal = np.zeros(n, dtype=bool)
+    stage = 0
+    low1 = low2 = high1 = high2 = None
+
+    for i in range(n):
+        if stage == 4 and c[i] > high2:
+            signal[i] = True
+            stage, low1, low2, high1, high2 = 0, None, None, None, None
+            continue
+
+        confirm_idx = i - lookback
+        if confirm_idx < 0:
+            continue
+
+        if is_low[confirm_idx]:
+            price = c[confirm_idx]
+            if stage == 0:
+                low1, stage = price, 1
+            elif stage == 1 and price < low1:
+                low1 = price
+            elif stage == 2:
+                if price > low1:
+                    low2, stage = price, 3
+                else:
+                    low1, stage = price, 1
+
+        if is_high[confirm_idx]:
+            price = c[confirm_idx]
+            if stage == 1:
+                high1, stage = price, 2
+            elif stage == 2 and price > high1:
+                high1 = price
+            elif stage == 3:
+                if price > high1:
+                    high2, stage = price, 4
+                else:
+                    stage, low1, low2, high1, high2 = 0, None, None, None, None
+
+    return signal
+
+
+def build_and_sim(close, setclose, fee, use_scaling=False, use_ema_cross=False, use_hh_hl=False):
     df = pd.DataFrame({"close": close})
     df["ema5"] = ema(close, 5); df["ema10"] = ema(close, 10); df["ema50"] = ema(close, 50)
     df["ema100"] = ema(close, 100); df["ema200"] = ema(close, 200)
     df["rsi"] = rsi(close); df["macd"] = ema(close, 12) - ema(close, 26)
-    if use_ema_cross:
+    if use_hh_hl:
+        # เข้าตอนราคาทะลุ Swing High หลังเกิดแพทเทิร์น Higher-High/Higher-Low 2 ชุดติดกัน (price action breakout)
+        stock_ok = pd.Series(find_hh_hl_breakout_signal(close), index=df.index)
+    elif use_ema_cross:
         # เข้าเฉพาะวันที่ EMA50 ตัดขึ้น EMA100 (ครั้งแรก) — ไม่บังคับ EMA50>EMA200 ฝั่งหุ้น
         # เพราะตอนตัดขึ้น EMA50 มักยังไม่ทัน EMA200 (เส้นช้ากว่า)
         cross_up = (df["ema50"] > df["ema100"]) & (df["ema50"].shift(1) <= df["ema100"].shift(1))
@@ -173,9 +240,9 @@ def build_and_sim(close, setclose, fee, use_scaling=False, use_ema_cross=False):
     return df, events, m
 
 
-def show_stock_detail(symbol, close, setclose, fee, cap, use_scaling=False, use_ema_cross=False):
+def show_stock_detail(symbol, close, setclose, fee, cap, use_scaling=False, use_ema_cross=False, use_hh_hl=False):
     """แสดงรายละเอียดหุ้นตัวเดียว: เมตริก + กราฟจุดซื้อขาย + log"""
-    df, events, m = build_and_sim(close, setclose, fee, use_scaling, use_ema_cross)
+    df, events, m = build_and_sim(close, setclose, fee, use_scaling, use_ema_cross, use_hh_hl)
     eq = df["equity"]
     final_value = cap * eq.iloc[-1]; profit = final_value - cap
 
@@ -355,10 +422,14 @@ with st.sidebar:
     st.divider()
     st.subheader("🎯 กลยุทธ์ ENTRY (เข้า)")
     entry_strategy = st.radio("เลือกเงื่อนไขเข้า",
-                       ["Default (EMA10>50>200 + MACD>0)", "EMA50 ตัดขึ้น EMA100 + Trend Filter"],
+                       ["Default (EMA10>50>200 + MACD>0)", "EMA50 ตัดขึ้น EMA100 + Trend Filter",
+                        "HH-HL Breakout (2 ชุดติดกัน)"],
                        help="แบบที่ 2: เข้าเฉพาะวันที่ EMA50 ตัดขึ้น EMA100 (ครั้งแรก) + Close>EMA200 · EMA10>EMA50 · MACD>0 "
-                            "(ไม่บังคับ EMA50>EMA200 ฝั่งหุ้น เพราะตอนตัดขึ้นมักยังไม่ทัน)")
+                            "(ไม่บังคับ EMA50>EMA200 ฝั่งหุ้น เพราะตอนตัดขึ้นมักยังไม่ทัน)\n\n"
+                            "แบบที่ 3: เข้าตอนราคาทะลุ Swing High (breakout) หลังเกิดแพทเทิร์น Higher-High/"
+                            "Higher-Low ติดกัน 2 ชุด — เป็น price action ล้วน ไม่ใช้เงื่อนไข EMA ฝั่งหุ้น")
     use_ema_cross = entry_strategy == "EMA50 ตัดขึ้น EMA100 + Trend Filter"
+    use_hh_hl = entry_strategy == "HH-HL Breakout (2 ชุดติดกัน)"
 
     st.divider()
     st.subheader("🎯 กลยุทธ์ EXIT")
@@ -439,11 +510,16 @@ if is_deep_link:
     fee_q = float(qp.get("fee", "0.002"))
     effective_scaling = qp.get("scaling", "0") == "1"
     effective_ema_cross = qp.get("cross", "0") == "1"
+    effective_hh_hl = qp.get("hhhl", "0") == "1"
 else:
     effective_scaling = use_scaling
     effective_ema_cross = use_ema_cross
+    effective_hh_hl = use_hh_hl
 
-if effective_ema_cross:
+if effective_hh_hl:
+    entry_desc = ("แพทเทิร์น **Higher-High / Higher-Low 2 ชุดติดกัน** แล้วราคาทะลุ Swing High ล่าสุด (breakout) "
+                  "**และ** SET `Close>EMA200` · `EMA10>EMA50` · `EMA50>EMA200`")
+elif effective_ema_cross:
     entry_desc = ("วันที่ `EMA50` ตัดขึ้น `EMA100` **และ** หุ้น `Close>EMA200` · `EMA10>EMA50` · `MACD>0` "
                   "**และ** SET `Close>EMA200` · `EMA10>EMA50` · `EMA50>EMA200`")
 else:
@@ -469,7 +545,7 @@ if is_deep_link:
     if close_q is None:
         st.error(f"ไม่มีข้อมูล {sym_q}")
     else:
-        show_stock_detail(sym_q, close_q, setclose_q, fee_q, cap_q, effective_scaling, effective_ema_cross)
+        show_stock_detail(sym_q, close_q, setclose_q, fee_q, cap_q, effective_scaling, effective_ema_cross, effective_hh_hl)
     st.stop()
 
 if not run:
@@ -574,7 +650,7 @@ if mode == "สแกนทั้งกลุ่ม":
                     prog.progress((k + 1) / len(items))
                     continue
 
-            _, _, m = build_and_sim(c, setclose, fee, use_scaling, use_ema_cross)
+            _, _, m = build_and_sim(c, setclose, fee, use_scaling, use_ema_cross, use_hh_hl)
             sym_clean = sym.replace(".BK", "")
             rows.append({
                 "หุ้น": sym_clean,
@@ -628,7 +704,8 @@ if mode == "สแกนทั้งกลุ่ม":
         for _, r in data.iterrows():
             sym = str(r["หุ้น"])
             url = (f"?sym={sym}&years={int(years)}&cap={cap:.0f}&fee={fee}"
-                   f"&scaling={1 if use_scaling else 0}&cross={1 if use_ema_cross else 0}")
+                   f"&scaling={1 if use_scaling else 0}&cross={1 if use_ema_cross else 0}"
+                   f"&hhhl={1 if use_hh_hl else 0}")
             tds = [f'<td style="padding:6px 10px;"><a href="{html_lib.escape(url)}" target="_blank" '
                    f'style="color:#3fa7ff;text-decoration:none;font-weight:600;">{html_lib.escape(sym)}</a></td>']
             for c in cols[1:]:
@@ -660,5 +737,5 @@ if mode == "สแกนทั้งกลุ่ม":
 close = load_one(symbol, int(years))
 if close is None:
     st.error(f"ไม่มีข้อมูล {symbol}"); st.stop()
-show_stock_detail(symbol, close, setclose, fee, cap, use_scaling, use_ema_cross)
+show_stock_detail(symbol, close, setclose, fee, cap, use_scaling, use_ema_cross, use_hh_hl)
 st.caption("⚠️ backtest ≠ ผลจริง · ลองหลายตัว/หลายช่วง กัน overfit · Sandbox ≤10%")
