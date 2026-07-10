@@ -400,11 +400,42 @@ with st.sidebar:
 
     run = st.button("🚀 รัน Backtest", type="primary", use_container_width=True)
 
-st.markdown("""
+# ══════════ เปิดจากลิงก์แท็บใหม่ (ดูกราฟหุ้นเดียว จากผลสแกน) ══════════
+# เช็คก่อน เพื่อให้คำอธิบายกลยุทธ์ด้านล่างตรงกับที่ใช้จริงในแท็บนี้ (ไม่ใช่ค่า default ของ sidebar)
+qp = st.query_params
+is_deep_link = "sym" in qp
+if is_deep_link:
+    sym_q = qp.get("sym", "").upper()
+    if sym_q and not sym_q.endswith(".BK"):
+        sym_q += ".BK"
+    years_q = int(qp.get("years", "5"))
+    cap_q = float(qp.get("cap", "50000"))
+    fee_q = float(qp.get("fee", "0.002"))
+    effective_scaling = qp.get("scaling", "0") == "1"
+else:
+    effective_scaling = use_scaling
+
+if effective_scaling:
+    exit_desc = ("**Scaling Out**: ขาย `50%` ที่กำไร `+10%` → ขาย `50%` ที่เหลือที่กำไร `+20%` "
+                 "→ ไม้สุดท้ายถือต่อจนหลุด `-5%` จากจุดสูงสุดหลัง `+20%` (หรือหลุด Cut Loss `-8%` / `EMA50` ก่อนถึง +10%)")
+else:
+    exit_desc = "Cut Loss `-8%` (เริ่มต้น) · หลังมีกำไร → **ถือจนราคาหลุด `EMA50`** (trailing) จึงขาย"
+
+st.markdown(f"""
 **กลยุทธ์ ① — EMA Trend + SET Filter**
 - **เข้า** (ครบทุกข้อ): หุ้น `Close>EMA200` · `EMA10>EMA50` · `EMA50>EMA200` · `MACD>0` **และ** SET `Close>EMA200` · `EMA10>EMA50` · `EMA50>EMA200`
-- **ออก (ขี่เทรนด์ ปล่อยกำไรวิ่ง)**: Cut Loss `-8%` (เริ่มต้น) · หลังมีกำไร → **ถือจนราคาหลุด `EMA50`** (trailing) จึงขาย
+- **ออก**: {exit_desc}
 """)
+
+if is_deep_link:
+    st.caption("🔗 เปิดจากผลสแกน · ใช้เงื่อนไข/กลยุทธ์เดียวกับตอนสแกน")
+    setclose_q = load_one(SET_SYMBOL, years_q)
+    close_q = load_one(sym_q, years_q)
+    if close_q is None:
+        st.error(f"ไม่มีข้อมูล {sym_q}")
+    else:
+        show_stock_detail(sym_q, close_q, setclose_q, fee_q, cap_q, effective_scaling)
+    st.stop()
 
 if not run:
     st.info("👈 เลือกโหมด + ตั้งค่า แล้วกด **รัน Backtest**")
@@ -563,15 +594,11 @@ if mode == "สแกนทั้งกลุ่ม":
                                              options=sector_data["หุ้น"].tolist(),
                                              key=f"sym_select_{sector}")
                 with c2:
-                    sector_btn = st.button("📊 ดูกราฟ", use_container_width=True, key=f"btn_{sector}")
-
-                if sector_btn and sector_sym:
-                    sym = sector_sym + ".BK"
-                    st.divider()
-                    show_stock_detail(sym, closes[sym], setclose, fee, cap, use_scaling)
+                    sector_url = f"?sym={sector_sym}&years={int(years)}&cap={cap:.0f}&fee={fee}&scaling={1 if use_scaling else 0}"
+                    st.link_button("📊 เปิดกราฟ (แท็บใหม่)", sector_url, use_container_width=True)
     else:
         # แสดงทั้งหมด
-        st.caption("👉 เลือกหุ้น → ขึ้นกราฟ + จุดซื้อขายทันที (ไม่ต้องกด Run อีกที) · เรียงผลตอบแทนสูง→ต่ำ")
+        st.caption("👉 เลือกหุ้น → กด เปิดกราฟ (ขึ้นแท็บใหม่ ใช้เงื่อนไข/กลยุทธ์เดียวกับที่ตั้งไว้) · เรียงผลตอบแทนสูง→ต่ำ")
         st.dataframe(res_filtered.drop(["กลุ่ม", "ประเภท"], axis=1), use_container_width=True, hide_index=True, key="scan_tbl")
 
         c1, c2 = st.columns([3, 1])
@@ -580,12 +607,8 @@ if mode == "สแกนทั้งกลุ่ม":
                                        options=res_filtered["หุ้น"].tolist(),
                                        key="sym_select")
         with c2:
-            view_btn = st.button("📊 ดูกราฟ", use_container_width=True, type="primary")
-
-        if view_btn and selected_sym:
-            sym = selected_sym + ".BK"
-            st.divider()
-            show_stock_detail(sym, closes[sym], setclose, fee, cap, use_scaling)
+            selected_url = f"?sym={selected_sym}&years={int(years)}&cap={cap:.0f}&fee={fee}&scaling={1 if use_scaling else 0}"
+            st.link_button("📊 เปิดกราฟ (แท็บใหม่)", selected_url, use_container_width=True, type="primary")
     st.caption("⚠️ backtest ≠ ผลจริง · กัน overfit: ลองหลายช่วงเวลา · Sandbox ≤10%")
     st.stop()
 
