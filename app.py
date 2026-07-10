@@ -64,7 +64,8 @@ def rsi(s, p=14):
 
 def build_and_sim(close, setclose, fee, use_scaling=False):
     df = pd.DataFrame({"close": close})
-    df["ema10"] = ema(close, 10); df["ema50"] = ema(close, 50); df["ema200"] = ema(close, 200)
+    df["ema10"] = ema(close, 10); df["ema50"] = ema(close, 50)
+    df["ema100"] = ema(close, 100); df["ema200"] = ema(close, 200)
     df["rsi"] = rsi(close); df["macd"] = ema(close, 12) - ema(close, 26)
     stock_ok = (df["close"] > df["ema200"]) & (df["ema10"] > df["ema50"]) \
         & (df["ema50"] > df["ema200"]) & (df["macd"] > 0)
@@ -214,15 +215,17 @@ def show_stock_detail(symbol, close, setclose, fee, cap, use_scaling=False):
 
     st.subheader("💹 ราคา + EMA + MACD + จุดซื้อ/ขาย")
     pdf = pd.DataFrame({"date": df.index, "close": df["close"].values,
-                        "EMA50": df["ema50"].values, "EMA200": df["ema200"].values, "macd": df["macd"].values})
+                        "EMA50": df["ema50"].values, "EMA100": df["ema100"].values,
+                        "EMA200": df["ema200"].values, "macd": df["macd"].values})
 
     # ราคา + EMA
     line = alt.Chart(pdf).mark_line(color="#9aa4b2").encode(x="date:T", y=alt.Y("close:Q", title="ราคา"))
     e50 = alt.Chart(pdf).mark_line(color="#3fb950", strokeDash=[4, 3]).encode(x="date:T", y="EMA50:Q")
+    e100 = alt.Chart(pdf).mark_line(color="#a371f7", strokeDash=[4, 3]).encode(x="date:T", y="EMA100:Q")
     e200 = alt.Chart(pdf).mark_line(color="#f0883e", strokeDash=[4, 3]).encode(x="date:T", y="EMA200:Q")
 
     mk = pd.DataFrame([{"date": df.index[i], "price": p, "act": a} for (i, a, p) in events])
-    layers = [line, e50, e200]
+    layers = [line, e50, e100, e200]
     if not mk.empty:
         buy = mk[mk.act == "BUY"]
         sell_partial = mk[mk.act == "SELL 50%"]
@@ -243,7 +246,8 @@ def show_stock_detail(symbol, close, setclose, fee, cap, use_scaling=False):
     # รวมกราฟ
     combined = alt.vconcat(price_chart, macd_chart).resolve_scale(x='shared')
     st.altair_chart(combined.interactive(), use_container_width=True)
-    st.caption("🔺 เขียว = BUY · 🔴 แดง = SELL (ขายหมด) · 🟠 ส้ม (วงกลม) = SELL 50% (ขายบางส่วน — เฉพาะกลยุทธ์ Scaling Out)")
+    st.caption("เส้น EMA: 🟢 เขียว = EMA50 · 🟣 ม่วง = EMA100 · 🟠 ส้ม (เส้นประ) = EMA200")
+    st.caption("จุดซื้อขาย: 🔺 เขียว = BUY · 🔴 แดง = SELL (ขายหมด) · 🟠 ส้ม (วงกลม) = SELL 50% (ขายบางส่วน — เฉพาะกลยุทธ์ Scaling Out)")
 
     trades = m["trades"]
     st.subheader(f"🧾 แต่ละไม้ที่เทรด ({len(trades)})")
