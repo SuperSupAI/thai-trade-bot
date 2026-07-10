@@ -221,12 +221,18 @@ def show_stock_detail(symbol, close, setclose, fee, cap, use_scaling=False):
     e50 = alt.Chart(pdf).mark_line(color="#3fb950", strokeDash=[4, 3]).encode(x="date:T", y="EMA50:Q")
     e200 = alt.Chart(pdf).mark_line(color="#f0883e", strokeDash=[4, 3]).encode(x="date:T", y="EMA200:Q")
 
-    mk = pd.DataFrame([{"date": df.index[i], "price": p, "act": "BUY" if a == "BUY" else "SELL"}
-                       for (i, a, p) in events])
+    mk = pd.DataFrame([{"date": df.index[i], "price": p, "act": a} for (i, a, p) in events])
     layers = [line, e50, e200]
     if not mk.empty:
-        layers.append(alt.Chart(mk[mk.act == "BUY"]).mark_point(shape="triangle-up", size=90, color="#2ea043", filled=True).encode(x="date:T", y="price:Q"))
-        layers.append(alt.Chart(mk[mk.act == "SELL"]).mark_point(shape="triangle-down", size=90, color="#f85149", filled=True).encode(x="date:T", y="price:Q"))
+        buy = mk[mk.act == "BUY"]
+        sell_partial = mk[mk.act == "SELL 50%"]
+        sell_all = mk[mk.act.isin(["SELL", "SELL ALL"])]
+        if not buy.empty:
+            layers.append(alt.Chart(buy).mark_point(shape="triangle-up", size=90, color="#2ea043", filled=True).encode(x="date:T", y="price:Q"))
+        if not sell_partial.empty:
+            layers.append(alt.Chart(sell_partial).mark_point(shape="circle", size=80, color="#f0883e", filled=True).encode(x="date:T", y="price:Q"))
+        if not sell_all.empty:
+            layers.append(alt.Chart(sell_all).mark_point(shape="triangle-down", size=90, color="#f85149", filled=True).encode(x="date:T", y="price:Q"))
     price_chart = alt.layer(*layers).properties(height=300)
 
     # MACD ใต้ราคา
@@ -237,6 +243,7 @@ def show_stock_detail(symbol, close, setclose, fee, cap, use_scaling=False):
     # รวมกราฟ
     combined = alt.vconcat(price_chart, macd_chart).resolve_scale(x='shared')
     st.altair_chart(combined.interactive(), use_container_width=True)
+    st.caption("🔺 เขียว = BUY · 🔴 แดง = SELL (ขายหมด) · 🟠 ส้ม (วงกลม) = SELL 50% (ขายบางส่วน — เฉพาะกลยุทธ์ Scaling Out)")
 
     trades = m["trades"]
     st.subheader(f"🧾 แต่ละไม้ที่เทรด ({len(trades)})")
