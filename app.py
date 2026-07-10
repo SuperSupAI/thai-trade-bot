@@ -62,13 +62,17 @@ def rsi(s, p=14):
     return (100 - 100 / (1 + up / dn.replace(0, np.nan))).fillna(50)
 
 
-def build_and_sim(close, setclose, fee, use_scaling=False):
+def build_and_sim(close, setclose, fee, use_scaling=False, use_ema_cross=False):
     df = pd.DataFrame({"close": close})
     df["ema10"] = ema(close, 10); df["ema50"] = ema(close, 50)
     df["ema100"] = ema(close, 100); df["ema200"] = ema(close, 200)
     df["rsi"] = rsi(close); df["macd"] = ema(close, 12) - ema(close, 26)
     stock_ok = (df["close"] > df["ema200"]) & (df["ema10"] > df["ema50"]) \
         & (df["ema50"] > df["ema200"]) & (df["macd"] > 0)
+    if use_ema_cross:
+        # เข้าเฉพาะวันที่ EMA50 ตัดขึ้น EMA100 (ครั้งแรก)
+        cross_up = (df["ema50"] > df["ema100"]) & (df["ema50"].shift(1) <= df["ema100"].shift(1))
+        stock_ok = stock_ok & cross_up
     if setclose is not None:
         s = setclose.reindex(df.index).ffill()
         set_ok = (s > ema(s, 200)) & (ema(s, 10) > ema(s, 50)) & (ema(s, 50) > ema(s, 200))
@@ -167,9 +171,9 @@ def build_and_sim(close, setclose, fee, use_scaling=False):
     return df, events, m
 
 
-def show_stock_detail(symbol, close, setclose, fee, cap, use_scaling=False):
+def show_stock_detail(symbol, close, setclose, fee, cap, use_scaling=False, use_ema_cross=False):
     """แสดงรายละเอียดหุ้นตัวเดียว: เมตริก + กราฟจุดซื้อขาย + log"""
-    df, events, m = build_and_sim(close, setclose, fee, use_scaling)
+    df, events, m = build_and_sim(close, setclose, fee, use_scaling, use_ema_cross)
     eq = df["equity"]
     final_value = cap * eq.iloc[-1]; profit = final_value - cap
 
@@ -346,6 +350,13 @@ with st.sidebar:
     fee = st.number_input("ค่าธรรมเนียม %/ข้าง", 0.0, 1.0, 0.2, 0.05) / 100
 
     st.divider()
+    st.subheader("🎯 กลยุทธ์ ENTRY (เข้า)")
+    entry_strategy = st.radio("เลือกเงื่อนไขเข้า",
+                       ["Default (EMA10>50>200 + MACD>0)", "EMA50 ตัดขึ้น EMA100 + Trend Filter"],
+                       help="แบบที่ 2: เข้าเฉพาะวันที่ EMA50 ตัดขึ้น EMA100 (ครั้งแรก) ร่วมกับเงื่อนไขเทรนด์เดิม")
+    use_ema_cross = entry_strategy == "EMA50 ตัดขึ้น EMA100 + Trend Filter"
+
+    st.divider()
     st.subheader("🎯 กลยุทธ์ EXIT")
     strategy = st.radio("เลือกกลยุทธ์",
                        ["Default (Trail EMA50)", "Scaling Out (10%→50%, 20%→50%)"],
@@ -353,58 +364,58 @@ with st.sidebar:
     use_scaling = strategy == "Scaling Out (10%→50%, 20%→50%)"
 
     st.divider()
-    st.subheader("📊 ตัวชี้วัดทางการเงิน (Fundamental)")
-    st.caption("✅ เลือกเงื่อนไขที่ต้องการใช้")
     fundamental_criteria = {}
+    with st.expander("📊 ตัวชี้วัดทางการเงิน (Fundamental)", expanded=False):
+        st.caption("✅ เลือกเงื่อนไขที่ต้องการใช้")
 
-    # เปิด/ปิดแต่ละเงื่อนไข
-    col_chk1, col_val1 = st.columns([1, 2])
-    with col_chk1:
-        use_pe = st.checkbox("P/E Ratio", value=False, key="use_pe")
-    with col_val1:
-        if use_pe:
-            max_pe = st.number_input("< ", value=20.0, step=1.0, key="max_pe")
-            fundamental_criteria['max_pe'] = max_pe
+        # เปิด/ปิดแต่ละเงื่อนไข
+        col_chk1, col_val1 = st.columns([1, 2])
+        with col_chk1:
+            use_pe = st.checkbox("P/E Ratio", value=False, key="use_pe")
+        with col_val1:
+            if use_pe:
+                max_pe = st.number_input("< ", value=20.0, step=1.0, key="max_pe")
+                fundamental_criteria['max_pe'] = max_pe
 
-    col_chk2, col_val2 = st.columns([1, 2])
-    with col_chk2:
-        use_roe = st.checkbox("ROE", value=False, key="use_roe")
-    with col_val2:
-        if use_roe:
-            min_roe = st.number_input("% > ", value=15.0, step=1.0, key="min_roe")
-            fundamental_criteria['min_roe'] = min_roe / 100
+        col_chk2, col_val2 = st.columns([1, 2])
+        with col_chk2:
+            use_roe = st.checkbox("ROE", value=False, key="use_roe")
+        with col_val2:
+            if use_roe:
+                min_roe = st.number_input("% > ", value=15.0, step=1.0, key="min_roe")
+                fundamental_criteria['min_roe'] = min_roe / 100
 
-    col_chk3, col_val3 = st.columns([1, 2])
-    with col_chk3:
-        use_de = st.checkbox("D/E Ratio", value=False, key="use_de")
-    with col_val3:
-        if use_de:
-            max_de = st.number_input("< ", value=1.0, step=0.1, key="max_de")
-            fundamental_criteria['max_de'] = max_de
+        col_chk3, col_val3 = st.columns([1, 2])
+        with col_chk3:
+            use_de = st.checkbox("D/E Ratio", value=False, key="use_de")
+        with col_val3:
+            if use_de:
+                max_de = st.number_input("< ", value=1.0, step=0.1, key="max_de")
+                fundamental_criteria['max_de'] = max_de
 
-    col_chk4, col_val4 = st.columns([1, 2])
-    with col_chk4:
-        use_gross = st.checkbox("Gross Margin", value=False, key="use_gross")
-    with col_val4:
-        if use_gross:
-            min_gross = st.number_input("% > ", value=40.0, step=5.0, key="min_gross")
-            fundamental_criteria['min_gross_margin'] = min_gross / 100
+        col_chk4, col_val4 = st.columns([1, 2])
+        with col_chk4:
+            use_gross = st.checkbox("Gross Margin", value=False, key="use_gross")
+        with col_val4:
+            if use_gross:
+                min_gross = st.number_input("% > ", value=40.0, step=5.0, key="min_gross")
+                fundamental_criteria['min_gross_margin'] = min_gross / 100
 
-    col_chk5, col_val5 = st.columns([1, 2])
-    with col_chk5:
-        use_ebit = st.checkbox("EBIT Margin", value=False, key="use_ebit")
-    with col_val5:
-        if use_ebit:
-            min_ebit = st.number_input("% > ", value=10.0, step=1.0, key="min_ebit")
-            fundamental_criteria['min_ebit_margin'] = min_ebit / 100
+        col_chk5, col_val5 = st.columns([1, 2])
+        with col_chk5:
+            use_ebit = st.checkbox("EBIT Margin", value=False, key="use_ebit")
+        with col_val5:
+            if use_ebit:
+                min_ebit = st.number_input("% > ", value=10.0, step=1.0, key="min_ebit")
+                fundamental_criteria['min_ebit_margin'] = min_ebit / 100
 
-    col_chk6, col_val6 = st.columns([1, 2])
-    with col_chk6:
-        use_eps = st.checkbox("EPS Growth", value=False, key="use_eps")
-    with col_val6:
-        if use_eps:
-            min_eps = st.number_input("% > ", value=10.0, step=1.0, key="min_eps")
-            fundamental_criteria['min_eps_growth'] = min_eps / 100
+        col_chk6, col_val6 = st.columns([1, 2])
+        with col_chk6:
+            use_eps = st.checkbox("EPS Growth", value=False, key="use_eps")
+        with col_val6:
+            if use_eps:
+                min_eps = st.number_input("% > ", value=10.0, step=1.0, key="min_eps")
+                fundamental_criteria['min_eps_growth'] = min_eps / 100
 
     # ตรวจสอบว่ามีเงื่อนไข fundamental ถูกเปิดใช้หรือไม่
     use_fundamental = len(fundamental_criteria) > 0
@@ -423,8 +434,17 @@ if is_deep_link:
     cap_q = float(qp.get("cap", "50000"))
     fee_q = float(qp.get("fee", "0.002"))
     effective_scaling = qp.get("scaling", "0") == "1"
+    effective_ema_cross = qp.get("cross", "0") == "1"
 else:
     effective_scaling = use_scaling
+    effective_ema_cross = use_ema_cross
+
+if effective_ema_cross:
+    entry_desc = ("วันที่ `EMA50` ตัดขึ้น `EMA100` **และ** หุ้น `Close>EMA200` · `EMA10>EMA50` · `EMA50>EMA200` · `MACD>0` "
+                  "**และ** SET `Close>EMA200` · `EMA10>EMA50` · `EMA50>EMA200`")
+else:
+    entry_desc = ("หุ้น `Close>EMA200` · `EMA10>EMA50` · `EMA50>EMA200` · `MACD>0` "
+                  "**และ** SET `Close>EMA200` · `EMA10>EMA50` · `EMA50>EMA200`")
 
 if effective_scaling:
     exit_desc = ("**Scaling Out**: ขาย `50%` ที่กำไร `+10%` → ขาย `50%` ที่เหลือที่กำไร `+20%` "
@@ -434,7 +454,7 @@ else:
 
 st.markdown(f"""
 **กลยุทธ์ ① — EMA Trend + SET Filter**
-- **เข้า** (ครบทุกข้อ): หุ้น `Close>EMA200` · `EMA10>EMA50` · `EMA50>EMA200` · `MACD>0` **และ** SET `Close>EMA200` · `EMA10>EMA50` · `EMA50>EMA200`
+- **เข้า** (ครบทุกข้อ): {entry_desc}
 - **ออก**: {exit_desc}
 """)
 
@@ -445,7 +465,7 @@ if is_deep_link:
     if close_q is None:
         st.error(f"ไม่มีข้อมูล {sym_q}")
     else:
-        show_stock_detail(sym_q, close_q, setclose_q, fee_q, cap_q, effective_scaling)
+        show_stock_detail(sym_q, close_q, setclose_q, fee_q, cap_q, effective_scaling, effective_ema_cross)
     st.stop()
 
 if not run:
@@ -550,7 +570,7 @@ if mode == "สแกนทั้งกลุ่ม":
                     prog.progress((k + 1) / len(items))
                     continue
 
-            _, _, m = build_and_sim(c, setclose, fee, use_scaling)
+            _, _, m = build_and_sim(c, setclose, fee, use_scaling, use_ema_cross)
             sym_clean = sym.replace(".BK", "")
             rows.append({
                 "หุ้น": sym_clean,
@@ -603,7 +623,8 @@ if mode == "สแกนทั้งกลุ่ม":
         rows_html = []
         for _, r in data.iterrows():
             sym = str(r["หุ้น"])
-            url = f"?sym={sym}&years={int(years)}&cap={cap:.0f}&fee={fee}&scaling={1 if use_scaling else 0}"
+            url = (f"?sym={sym}&years={int(years)}&cap={cap:.0f}&fee={fee}"
+                   f"&scaling={1 if use_scaling else 0}&cross={1 if use_ema_cross else 0}")
             tds = [f'<td style="padding:6px 10px;"><a href="{html_lib.escape(url)}" target="_blank" '
                    f'style="color:#3fa7ff;text-decoration:none;font-weight:600;">{html_lib.escape(sym)}</a></td>']
             for c in cols[1:]:
@@ -635,5 +656,5 @@ if mode == "สแกนทั้งกลุ่ม":
 close = load_one(symbol, int(years))
 if close is None:
     st.error(f"ไม่มีข้อมูล {symbol}"); st.stop()
-show_stock_detail(symbol, close, setclose, fee, cap)
+show_stock_detail(symbol, close, setclose, fee, cap, use_scaling, use_ema_cross)
 st.caption("⚠️ backtest ≠ ผลจริง · ลองหลายตัว/หลายช่วง กัน overfit · Sandbox ≤10%")
