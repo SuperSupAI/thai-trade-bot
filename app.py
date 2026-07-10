@@ -555,22 +555,35 @@ if mode == "สแกนทั้งกลุ่ม":
         for sector in sectors_in_result:
             sector_data = res_filtered[res_filtered["กลุ่ม"] == sector].sort_values("ผลตอบแทน%", ascending=False)
             sector_beat = (sector_data["ชนะ B&H"] == "✅").sum()
-            with st.expander(f"📊 {sector} ({len(sector_data)} หุ้น) - เฉลี่ย {sector_data['ผลตอบแทน%'].mean():+.1f}% | ชนะ {sector_beat}/{len(sector_data)}"):
-                event = st.dataframe(sector_data.drop(["กลุ่ม", "ประเภท"], axis=1), use_container_width=True, hide_index=True,
-                                   on_select="rerun", selection_mode="single-row", key=f"scan_tbl_{sector}")
-                sel = event.selection.rows if event and event.selection else []
-                if sel:
-                    sym = sector_data.iloc[sel[0]]["หุ้น"] + ".BK"
+            with st.expander(f"📊 {sector} ({len(sector_data)} หุ้น) - เฉลี่ย {sector_data['ผลตอบแทน%'].mean():+.1f}% | ชนะ {sector_beat}/{len(sector_data)}", expanded=True):
+                st.dataframe(sector_data.drop(["กลุ่ม", "ประเภท"], axis=1), use_container_width=True, hide_index=True, key=f"scan_tbl_{sector}")
+                c1, c2 = st.columns([3, 1])
+                with c1:
+                    sector_sym = st.selectbox("เลือกหุ้น",
+                                             options=sector_data["หุ้น"].tolist(),
+                                             key=f"sym_select_{sector}")
+                with c2:
+                    sector_btn = st.button("📊 ดูกราฟ", use_container_width=True, key=f"btn_{sector}")
+
+                if sector_btn and sector_sym:
+                    sym = sector_sym + ".BK"
                     st.divider()
                     show_stock_detail(sym, closes[sym], setclose, fee, cap, use_scaling)
     else:
         # แสดงทั้งหมด
-        st.caption("👉 คลิกแถวหุ้น → ขึ้นกราฟ + จุดซื้อขายทันที (ไม่ต้องกด Run อีกที) · เรียงผลตอบแทนสูง→ต่ำ")
-        event = st.dataframe(res_filtered.drop(["กลุ่ม", "ประเภท"], axis=1), use_container_width=True, hide_index=True,
-                             on_select="rerun", selection_mode="single-row", key="scan_tbl")
-        sel = event.selection.rows if event and event.selection else []
-        if sel:
-            sym = res_filtered.iloc[sel[0]]["หุ้น"] + ".BK"
+        st.caption("👉 เลือกหุ้น → ขึ้นกราฟ + จุดซื้อขายทันที (ไม่ต้องกด Run อีกที) · เรียงผลตอบแทนสูง→ต่ำ")
+        st.dataframe(res_filtered.drop(["กลุ่ม", "ประเภท"], axis=1), use_container_width=True, hide_index=True, key="scan_tbl")
+
+        c1, c2 = st.columns([3, 1])
+        with c1:
+            selected_sym = st.selectbox("เลือกหุ้นเพื่อดูรายละเอียด",
+                                       options=res_filtered["หุ้น"].tolist(),
+                                       key="sym_select")
+        with c2:
+            view_btn = st.button("📊 ดูกราฟ", use_container_width=True, type="primary")
+
+        if view_btn and selected_sym:
+            sym = selected_sym + ".BK"
             st.divider()
             show_stock_detail(sym, closes[sym], setclose, fee, cap, use_scaling)
     st.caption("⚠️ backtest ≠ ผลจริง · กัน overfit: ลองหลายช่วงเวลา · Sandbox ≤10%")
