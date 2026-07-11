@@ -150,7 +150,8 @@ def find_hh_hl_breakout_signal(close, lookback=3, low_tolerance=0.05, monitor_da
     return signal, is_reentry
 
 
-def build_and_sim(close, setclose, fee, use_scaling=False, use_ema_cross=False, use_hh_hl=False, use_ema5_trail=False):
+def build_and_sim(close, setclose, fee, use_scaling=False, use_ema_cross=False, use_hh_hl=False, use_ema5_trail=False,
+                   use_ema_stack=False, use_ema30_50_exit=False):
     df = pd.DataFrame({"close": close})
     df["ema5"] = ema(close, 5); df["ema10"] = ema(close, 10); df["ema30"] = ema(close, 30); df["ema50"] = ema(close, 50)
     df["ema100"] = ema(close, 100); df["ema200"] = ema(close, 200)
@@ -166,11 +167,15 @@ def build_and_sim(close, setclose, fee, use_scaling=False, use_ema_cross=False, 
         # เพราะตอนตัดขึ้น EMA50 มักยังไม่ทัน EMA200 (เส้นช้ากว่า)
         cross_up = (df["ema50"] > df["ema100"]) & (df["ema50"].shift(1) <= df["ema100"].shift(1))
         stock_ok = (df["close"] > df["ema200"]) & (df["ema10"] > df["ema50"]) & (df["macd"] > 0) & cross_up
+    elif use_ema_stack:
+        # เรียงเต็มขั้นบันได: Close>EMA5>EMA10>EMA30>EMA50>EMA100>EMA200 (แนวโน้มขึ้นชัดเจนทุกกรอบเวลา)
+        stock_ok = (df["close"] > df["ema5"]) & (df["ema5"] > df["ema10"]) & (df["ema10"] > df["ema30"]) \
+            & (df["ema30"] > df["ema50"]) & (df["ema50"] > df["ema100"]) & (df["ema100"] > df["ema200"])
     else:
         stock_ok = (df["close"] > df["ema200"]) & (df["ema10"] > df["ema50"]) \
             & (df["ema50"] > df["ema200"]) & (df["macd"] > 0)
-    if setclose is not None and not use_hh_hl:
-        # HH-HL Breakout ไม่ใช้ SET filter — เป็น price action ของหุ้นล้วนๆ
+    if setclose is not None and not use_hh_hl and not use_ema_stack:
+        # HH-HL Breakout / EMA Stack ไม่ใช้ SET filter — ดูโครงสร้าง EMA ของหุ้นล้วนๆ
         s = setclose.reindex(df.index).ffill()
         set_ok = (s > ema(s, 200)) & (ema(s, 10) > ema(s, 50)) & (ema(s, 50) > ema(s, 200))
         cond = (stock_ok & set_ok).values
@@ -202,8 +207,17 @@ def build_and_sim(close, setclose, fee, use_scaling=False, use_ema_cross=False, 
             # ไม้ที่เข้าจากการ "เข้าครั้งที่สอง" (HH-HL re-entry) รัดเข็มขัดด้วย EMA30 แทน EMA5 (หลวมกว่า กันหลุดง่ายเกิน)
             trail_ema = e30 if entry.get("is_reentry") else e5
 
+            # EMA30 ตัดลง EMA50 — เงื่อนไขเดียวล้วนๆ: SL -8% หรือ EMA30 หลุดต่ำกว่า EMA50
+            if use_ema30_50_exit:
+                reason = "SL -8%" if chg <= -CUT else ("EMA30<EMA50" if e30[i] < e50[i] else None)
+                if reason:
+                    ft += fee; held = 0
+                    trades.append({**entry, "exit_i": i, "exit_price": price, "reason": reason,
+                                   "pnl": price / entry["price"] - 1 - 2 * fee})
+                    events.append((i, "SELL", price)); entry = None
+
             # EMA5 Trail strategy — เงื่อนไขเดียวล้วนๆ: SL -8% หรือราคาตัดเส้น trail (ไม่ผสม scaling/EMA50)
-            if use_ema5_trail:
+            elif use_ema5_trail:
                 reason = "SL -8%" if chg <= -CUT else (("ตัด EMA30" if entry.get("is_reentry") else "ตัด EMA5") if price < trail_ema[i] else None)
                 if reason:
                     ft += fee; held = 0
@@ -287,9 +301,10 @@ def build_and_sim(close, setclose, fee, use_scaling=False, use_ema_cross=False, 
     return df, events, m
 
 
-def show_stock_detail(symbol, close, setclose, fee, cap, use_scaling=False, use_ema_cross=False, use_hh_hl=False, use_ema5_trail=False, years=None):
+def show_stock_detail(symbol, close, setclose, fee, cap, use_scaling=False, use_ema_cross=False, use_hh_hl=False, use_ema5_trail=False, years=None,
+                       use_ema_stack=False, use_ema30_50_exit=False):
     """แสดงรายละเอียดหุ้นตัวเดียว: เมตริก + กราฟจุดซื้อขาย + log"""
-    df, events, m = build_and_sim(close, setclose, fee, use_scaling, use_ema_cross, use_hh_hl, use_ema5_trail)
+    df, events, m = build_and_sim(close, setclose, fee, use_scaling, use_ema_cross, use_hh_hl, use_ema5_trail, use_ema_stack, use_ema30_50_exit)
     eq = df["equity"]
     final_value = cap * eq.iloc[-1]; profit = final_value - cap
 
@@ -489,8 +504,10 @@ if is_deep_link:
     cross_q = qp.get("cross", "0") == "1"
     hhhl_q = qp.get("hhhl", "0") == "1"
     ema5trail_q = qp.get("ema5trail", "0") == "1"
-    entry_idx_q = 2 if hhhl_q else (1 if cross_q else 0)
-    exit_idx_q = 2 if ema5trail_q else (1 if scaling_q else 0)
+    emastack_q = qp.get("emastack", "0") == "1"
+    ema3050_q = qp.get("ema3050", "0") == "1"
+    entry_idx_q = 3 if emastack_q else (2 if hhhl_q else (1 if cross_q else 0))
+    exit_idx_q = 3 if ema3050_q else (2 if ema5trail_q else (1 if scaling_q else 0))
 
 # ── sidebar ──
 with st.sidebar:
@@ -513,27 +530,34 @@ with st.sidebar:
     st.subheader("🎯 กลยุทธ์ ENTRY (เข้า)")
     entry_strategy = st.radio("เลือกเงื่อนไขเข้า",
                        ["Default (EMA10>50>200 + MACD>0)", "EMA50 ตัดขึ้น EMA100 + Trend Filter",
-                        "HH-HL Breakout (2 ชุดติดกัน)"],
+                        "HH-HL Breakout (2 ชุดติดกัน)", "EMA Stack เรียงขั้นบันได (5>10>30>50>100>200)"],
                        index=entry_idx_q if is_deep_link else 0,
                        help="แบบที่ 2: เข้าเฉพาะวันที่ EMA50 ตัดขึ้น EMA100 (ครั้งแรก) + Close>EMA200 · EMA10>EMA50 · MACD>0 "
                             "(ไม่บังคับ EMA50>EMA200 ฝั่งหุ้น เพราะตอนตัดขึ้นมักยังไม่ทัน)\n\n"
                             "แบบที่ 3: เข้าตอนราคาทะลุ Swing High (breakout) หลังเกิดแพทเทิร์น Higher-High/"
                             "Higher-Low ติดกัน 2 ชุด — เป็น price action ล้วน ไม่ใช้เงื่อนไข EMA ฝั่งหุ้น "
                             "และไม่ใช้เงื่อนไข SET เลย "
-                            "(Low ชุดที่ 2 ยังนับเป็น Higher Low ได้ถ้าต่ำกว่า Low ชุดแรกไม่เกิน 5%)")
+                            "(Low ชุดที่ 2 ยังนับเป็น Higher Low ได้ถ้าต่ำกว่า Low ชุดแรกไม่เกิน 5%)\n\n"
+                            "แบบที่ 4: หุ้น `Close>EMA5>EMA10>EMA30>EMA50>EMA100>EMA200` เรียงขั้นบันไดครบทุกเส้น "
+                            "(แนวโน้มขึ้นชัดเจนทุกกรอบเวลา) — เช็คตอนปิดตลาด ซื้อได้ระหว่างวันถัดไป")
     use_ema_cross = entry_strategy == "EMA50 ตัดขึ้น EMA100 + Trend Filter"
     use_hh_hl = entry_strategy == "HH-HL Breakout (2 ชุดติดกัน)"
+    use_ema_stack = entry_strategy == "EMA Stack เรียงขั้นบันได (5>10>30>50>100>200)"
 
     st.divider()
     st.subheader("🎯 กลยุทธ์ EXIT")
     strategy = st.radio("เลือกกลยุทธ์",
-                       ["Default (Trail EMA50)", "Scaling Out (10%→50%, 20%→50%)", "EMA5 Trail (ตัด EMA5 ขายหมด)"],
+                       ["Default (Trail EMA50)", "Scaling Out (10%→50%, 20%→50%)", "EMA5 Trail (ตัด EMA5 ขายหมด)",
+                        "EMA30 ตัดลง EMA50 (ขายหมด)"],
                        index=exit_idx_q if is_deep_link else 0,
                        help="Scaling Out: ขาย50% ที่ 10%, ขาย50% ที่ 20%, ปล่อยไป -5%\n\n"
                             "EMA5 Trail: เงื่อนไขเดียวล้วนๆ ไม่ผสม scaling — ถือเต็มไม้ ขายหมดทันทีที่ราคาปิดต่ำกว่า EMA5 "
-                            "(หรือโดน SL -8% ก่อน) รัดเข็มขัดไวกว่า Default ที่ใช้ EMA50")
+                            "(หรือโดน SL -8% ก่อน) รัดเข็มขัดไวกว่า Default ที่ใช้ EMA50\n\n"
+                            "EMA30 ตัดลง EMA50: เงื่อนไขเดียวล้วนๆ — ขายหมดทันทีที่ EMA30 ต่ำกว่า EMA50 "
+                            "(หรือโดน SL -8% ก่อน) — เช็คตอนปิดตลาด ขายได้ระหว่างวันถัดไป")
     use_scaling = strategy == "Scaling Out (10%→50%, 20%→50%)"
     use_ema5_trail = strategy == "EMA5 Trail (ตัด EMA5 ขายหมด)"
+    use_ema30_50_exit = strategy == "EMA30 ตัดลง EMA50 (ขายหมด)"
 
     st.divider()
     fundamental_criteria = {}
@@ -601,8 +625,12 @@ effective_scaling = use_scaling
 effective_ema_cross = use_ema_cross
 effective_hh_hl = use_hh_hl
 effective_ema5_trail = use_ema5_trail
+effective_ema_stack = use_ema_stack
+effective_ema30_50_exit = use_ema30_50_exit
 
-if effective_hh_hl:
+if effective_ema_stack:
+    entry_desc = "หุ้น `Close>EMA5>EMA10>EMA30>EMA50>EMA100>EMA200` เรียงขั้นบันไดครบทุกเส้น (แนวโน้มขึ้นชัดเจนทุกกรอบเวลา) — **ไม่ใช้เงื่อนไข SET**"
+elif effective_hh_hl:
     entry_desc = ("แพทเทิร์น **Higher-High / Higher-Low 2 ชุดติดกัน** (Low ชุด 2 ต่ำกว่าชุดแรกได้ไม่เกิน `5%`) "
                   "แล้วราคาทะลุ Swing High ล่าสุด (breakout) **และ** ราคาต้องอยู่เหนือ `EMA200` "
                   "— **ไม่ใช้เงื่อนไข SET** (price action ของหุ้นล้วนๆ)\n\n"
@@ -616,7 +644,9 @@ else:
     entry_desc = ("หุ้น `Close>EMA200` · `EMA10>EMA50` · `EMA50>EMA200` · `MACD>0` "
                   "**และ** SET `Close>EMA200` · `EMA10>EMA50` · `EMA50>EMA200`")
 
-if effective_ema5_trail:
+if effective_ema30_50_exit:
+    exit_desc = "**EMA30 ตัดลง EMA50**: ขาย `หมด` ทันทีที่ `EMA30 < EMA50` (หรือ Cut Loss `-8%` ก่อน) — ไม่มี scaling"
+elif effective_ema5_trail:
     exit_desc = "**EMA5 Trail**: ถือเต็มไม้ ขาย `หมด` ทันทีที่ราคาปิด `หลุด EMA5` (หรือ Cut Loss `-8%` ก่อน) — ไม่มี scaling"
 elif effective_scaling:
     exit_desc = ("**Scaling Out**: ขาย `50%` ที่กำไร `+10%` → ขาย `50%` ที่เหลือที่กำไร `+20%` "
@@ -637,7 +667,7 @@ if is_deep_link:
     if close_q is None:
         st.error(f"ไม่มีข้อมูล {symbol}")
     else:
-        show_stock_detail(symbol, close_q, setclose_q, fee, cap, effective_scaling, effective_ema_cross, effective_hh_hl, effective_ema5_trail, int(years))
+        show_stock_detail(symbol, close_q, setclose_q, fee, cap, effective_scaling, effective_ema_cross, effective_hh_hl, effective_ema5_trail, int(years), effective_ema_stack, effective_ema30_50_exit)
     st.stop()
 
 if not run:
@@ -742,7 +772,7 @@ if mode == "สแกนทั้งกลุ่ม":
                     prog.progress((k + 1) / len(items))
                     continue
 
-            _, _, m = build_and_sim(c, setclose, fee, use_scaling, use_ema_cross, use_hh_hl, use_ema5_trail)
+            _, _, m = build_and_sim(c, setclose, fee, use_scaling, use_ema_cross, use_hh_hl, use_ema5_trail, use_ema_stack, use_ema30_50_exit)
             sym_clean = sym.replace(".BK", "")
             rows.append({
                 "หุ้น": sym_clean,
@@ -797,7 +827,8 @@ if mode == "สแกนทั้งกลุ่ม":
             sym = str(r["หุ้น"])
             url = (f"?sym={sym}&years={int(years)}&cap={cap:.0f}&fee={fee}"
                    f"&scaling={1 if use_scaling else 0}&cross={1 if use_ema_cross else 0}"
-                   f"&hhhl={1 if use_hh_hl else 0}&ema5trail={1 if use_ema5_trail else 0}")
+                   f"&hhhl={1 if use_hh_hl else 0}&ema5trail={1 if use_ema5_trail else 0}"
+                   f"&emastack={1 if use_ema_stack else 0}&ema3050={1 if use_ema30_50_exit else 0}")
             tds = [f'<td style="padding:6px 10px;"><a href="{html_lib.escape(url)}" target="_blank" '
                    f'style="color:#3fa7ff;text-decoration:none;font-weight:600;">{html_lib.escape(sym)}</a></td>']
             for c in cols[1:]:
@@ -829,5 +860,5 @@ if mode == "สแกนทั้งกลุ่ม":
 close = load_one(symbol, int(years))
 if close is None:
     st.error(f"ไม่มีข้อมูล {symbol}"); st.stop()
-show_stock_detail(symbol, close, setclose, fee, cap, use_scaling, use_ema_cross, use_hh_hl, use_ema5_trail, int(years))
+show_stock_detail(symbol, close, setclose, fee, cap, use_scaling, use_ema_cross, use_hh_hl, use_ema5_trail, int(years), use_ema_stack, use_ema30_50_exit)
 st.caption("⚠️ backtest ≠ ผลจริง · ลองหลายตัว/หลายช่วง กัน overfit · Sandbox ≤10%")
