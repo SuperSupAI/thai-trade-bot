@@ -112,7 +112,7 @@ def find_hh_hl_breakout_signal(close, lookback=3, low_tolerance=0.05):
     return signal
 
 
-def build_and_sim(close, setclose, fee, use_scaling=False, use_ema_cross=False, use_hh_hl=False):
+def build_and_sim(close, setclose, fee, use_scaling=False, use_ema_cross=False, use_hh_hl=False, use_ema5_trail=False):
     df = pd.DataFrame({"close": close})
     df["ema5"] = ema(close, 5); df["ema10"] = ema(close, 10); df["ema50"] = ema(close, 50)
     df["ema100"] = ema(close, 100); df["ema200"] = ema(close, 200)
@@ -157,8 +157,17 @@ def build_and_sim(close, setclose, fee, use_scaling=False, use_ema_cross=False, 
         if held > 0:
             chg = price / ep - 1
 
+            # EMA5 Trail strategy — เงื่อนไขเดียวล้วนๆ: SL -8% หรือราคาตัด EMA5 (ไม่ผสม scaling/EMA50)
+            if use_ema5_trail:
+                reason = "SL -8%" if chg <= -CUT else ("ตัด EMA5" if price < e5[i] else None)
+                if reason:
+                    ft += fee; held = 0
+                    trades.append({**entry, "exit_i": i, "exit_price": price, "reason": reason,
+                                   "pnl": price / entry["price"] - 1 - 2 * fee})
+                    events.append((i, "SELL", price)); entry = None
+
             # Scaling strategy
-            if use_scaling:
+            elif use_scaling:
                 # ที่ 10% profit → ขาย 50%
                 if not sold_at_10pct and chg >= 0.10:
                     ft += fee
@@ -231,9 +240,9 @@ def build_and_sim(close, setclose, fee, use_scaling=False, use_ema_cross=False, 
     return df, events, m
 
 
-def show_stock_detail(symbol, close, setclose, fee, cap, use_scaling=False, use_ema_cross=False, use_hh_hl=False):
+def show_stock_detail(symbol, close, setclose, fee, cap, use_scaling=False, use_ema_cross=False, use_hh_hl=False, use_ema5_trail=False):
     """แสดงรายละเอียดหุ้นตัวเดียว: เมตริก + กราฟจุดซื้อขาย + log"""
-    df, events, m = build_and_sim(close, setclose, fee, use_scaling, use_ema_cross, use_hh_hl)
+    df, events, m = build_and_sim(close, setclose, fee, use_scaling, use_ema_cross, use_hh_hl, use_ema5_trail)
     eq = df["equity"]
     final_value = cap * eq.iloc[-1]; profit = final_value - cap
 
@@ -427,9 +436,12 @@ with st.sidebar:
     st.divider()
     st.subheader("🎯 กลยุทธ์ EXIT")
     strategy = st.radio("เลือกกลยุทธ์",
-                       ["Default (Trail EMA50)", "Scaling Out (10%→50%, 20%→50%)"],
-                       help="Scaling Out: ขาย50% ที่ 10%, ขาย50% ที่ 20%, ปล่อยไป -5%")
+                       ["Default (Trail EMA50)", "Scaling Out (10%→50%, 20%→50%)", "EMA5 Trail (ตัด EMA5 ขายหมด)"],
+                       help="Scaling Out: ขาย50% ที่ 10%, ขาย50% ที่ 20%, ปล่อยไป -5%\n\n"
+                            "EMA5 Trail: เงื่อนไขเดียวล้วนๆ ไม่ผสม scaling — ถือเต็มไม้ ขายหมดทันทีที่ราคาปิดต่ำกว่า EMA5 "
+                            "(หรือโดน SL -8% ก่อน) รัดเข็มขัดไวกว่า Default ที่ใช้ EMA50")
     use_scaling = strategy == "Scaling Out (10%→50%, 20%→50%)"
+    use_ema5_trail = strategy == "EMA5 Trail (ตัด EMA5 ขายหมด)"
 
     st.divider()
     fundamental_criteria = {}
@@ -504,10 +516,12 @@ if is_deep_link:
     effective_scaling = qp.get("scaling", "0") == "1"
     effective_ema_cross = qp.get("cross", "0") == "1"
     effective_hh_hl = qp.get("hhhl", "0") == "1"
+    effective_ema5_trail = qp.get("ema5trail", "0") == "1"
 else:
     effective_scaling = use_scaling
     effective_ema_cross = use_ema_cross
     effective_hh_hl = use_hh_hl
+    effective_ema5_trail = use_ema5_trail
 
 if effective_hh_hl:
     entry_desc = ("แพทเทิร์น **Higher-High / Higher-Low 2 ชุดติดกัน** (Low ชุด 2 ต่ำกว่าชุดแรกได้ไม่เกิน `5%`) "
@@ -519,7 +533,9 @@ else:
     entry_desc = ("หุ้น `Close>EMA200` · `EMA10>EMA50` · `EMA50>EMA200` · `MACD>0` "
                   "**และ** SET `Close>EMA200` · `EMA10>EMA50` · `EMA50>EMA200`")
 
-if effective_scaling:
+if effective_ema5_trail:
+    exit_desc = "**EMA5 Trail**: ถือเต็มไม้ ขาย `หมด` ทันทีที่ราคาปิด `หลุด EMA5` (หรือ Cut Loss `-8%` ก่อน) — ไม่มี scaling"
+elif effective_scaling:
     exit_desc = ("**Scaling Out**: ขาย `50%` ที่กำไร `+10%` → ขาย `50%` ที่เหลือที่กำไร `+20%` "
                  "→ ไม้สุดท้ายถือต่อจนหลุด `-5%` จากจุดสูงสุดหลัง `+20%` (หรือหลุด Cut Loss `-8%` / `EMA50` ก่อนถึง +10%)")
 else:
@@ -538,7 +554,7 @@ if is_deep_link:
     if close_q is None:
         st.error(f"ไม่มีข้อมูล {sym_q}")
     else:
-        show_stock_detail(sym_q, close_q, setclose_q, fee_q, cap_q, effective_scaling, effective_ema_cross, effective_hh_hl)
+        show_stock_detail(sym_q, close_q, setclose_q, fee_q, cap_q, effective_scaling, effective_ema_cross, effective_hh_hl, effective_ema5_trail)
     st.stop()
 
 if not run:
@@ -643,7 +659,7 @@ if mode == "สแกนทั้งกลุ่ม":
                     prog.progress((k + 1) / len(items))
                     continue
 
-            _, _, m = build_and_sim(c, setclose, fee, use_scaling, use_ema_cross, use_hh_hl)
+            _, _, m = build_and_sim(c, setclose, fee, use_scaling, use_ema_cross, use_hh_hl, use_ema5_trail)
             sym_clean = sym.replace(".BK", "")
             rows.append({
                 "หุ้น": sym_clean,
@@ -698,7 +714,7 @@ if mode == "สแกนทั้งกลุ่ม":
             sym = str(r["หุ้น"])
             url = (f"?sym={sym}&years={int(years)}&cap={cap:.0f}&fee={fee}"
                    f"&scaling={1 if use_scaling else 0}&cross={1 if use_ema_cross else 0}"
-                   f"&hhhl={1 if use_hh_hl else 0}")
+                   f"&hhhl={1 if use_hh_hl else 0}&ema5trail={1 if use_ema5_trail else 0}")
             tds = [f'<td style="padding:6px 10px;"><a href="{html_lib.escape(url)}" target="_blank" '
                    f'style="color:#3fa7ff;text-decoration:none;font-weight:600;">{html_lib.escape(sym)}</a></td>']
             for c in cols[1:]:
@@ -730,5 +746,5 @@ if mode == "สแกนทั้งกลุ่ม":
 close = load_one(symbol, int(years))
 if close is None:
     st.error(f"ไม่มีข้อมูล {symbol}"); st.stop()
-show_stock_detail(symbol, close, setclose, fee, cap, use_scaling, use_ema_cross, use_hh_hl)
+show_stock_detail(symbol, close, setclose, fee, cap, use_scaling, use_ema_cross, use_hh_hl, use_ema5_trail)
 st.caption("⚠️ backtest ≠ ผลจริง · ลองหลายตัว/หลายช่วง กัน overfit · Sandbox ≤10%")
