@@ -5,7 +5,7 @@ from typing import Dict, Optional
 import streamlit as st
 from safe_fetch import safe_fetch_info
 
-FETCH_TIMEOUT = 15  # วินาที — yfinance Ticker.info ค้างไม่มีกำหนด/segfault ได้เมื่อ Yahoo ช้า/บล็อก IP/ตอบผิดปกติ
+FETCH_TIMEOUT = 30  # วินาที — yfinance Ticker.info ค้างไม่มีกำหนด/segfault ได้เมื่อ Yahoo ช้า/บล็อก IP/ตอบผิดปกติ
                      # (พบบ่อยบน cloud server) → ดึงแบบแยกโปรเซส (เหมือน safe_download_one) กันทั้งค้างและ segfault ลามแอปหลัก
 
 

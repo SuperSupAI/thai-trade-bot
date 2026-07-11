@@ -16,34 +16,46 @@ exception จะถูก raise ด้วยซ้ำ)
 (ไม่มีปัญหานี้บน Windows local เพราะ segfault เกิดเฉพาะบน Streamlit Cloud/Linux)
 """
 import multiprocessing as mp
+import time
 import pandas as pd
 
-TIMEOUT_PER_SYMBOL = 15  # วินาที ต่อหุ้น 1 ตัว
+TIMEOUT_PER_SYMBOL = 30  # วินาที ต่อหุ้น 1 ตัว (เผื่อเวลาให้ retry กัน rate-limit ด้วย)
 CHUNK = 6                # ดาวน์โหลดพร้อมกันกี่ตัว (จำกัดไม่ให้ spawn โปรเซสเยอะเกิน)
+
+# Yahoo rate-limit (YFRateLimitError) เจอบ่อยบน Streamlit Cloud (shared IP ของทุกแอปบน cloud
+# เดียวกันโดนนับรวมกัน) → retry พร้อม backoff กันเจอแค่ครั้งเดียวแล้วดับเลย
+RETRY_ATTEMPTS = 3
+RETRY_BACKOFF_SEC = 2  # เพิ่มเป็น 2s, 4s, 6s ระหว่างรอบ
 
 _HAS_FORK = "fork" in mp.get_all_start_methods()
 
 
 def _download_direct(symbol, years, with_volume=False):
-    """ดาวน์โหลดตรงๆ ในโปรเซสปัจจุบัน (ทางสำรองบน Windows / ที่ไม่มี fork)"""
-    try:
-        import yfinance as yf
-        df = yf.download(symbol, period=f"{years}y", interval="1d",
-                         auto_adjust=True, progress=False)
-        if df is None or df.empty:
+    """ดาวน์โหลดตรงๆ ในโปรเซสปัจจุบัน (ทางสำรองบน Windows / ที่ไม่มี fork)
+    retry กันโดน Yahoo rate-limit ชั่วคราว"""
+    import yfinance as yf
+    for attempt in range(1, RETRY_ATTEMPTS + 1):
+        try:
+            df = yf.download(symbol, period=f"{years}y", interval="1d",
+                             auto_adjust=True, progress=False)
+            if df is None or df.empty:
+                return None
+            c = df["Close"]
+            if isinstance(c, pd.DataFrame):
+                c = c.iloc[:, 0]
+            c = c.dropna()
+            if not with_volume:
+                return c
+            v = df["Volume"]
+            if isinstance(v, pd.DataFrame):
+                v = v.iloc[:, 0]
+            return pd.DataFrame({"close": c, "volume": v.reindex(c.index)})
+        except Exception as e:
+            is_rate_limit = "RateLimit" in type(e).__name__ or "Too Many Requests" in str(e)
+            if is_rate_limit and attempt < RETRY_ATTEMPTS:
+                time.sleep(RETRY_BACKOFF_SEC * attempt)
+                continue
             return None
-        c = df["Close"]
-        if isinstance(c, pd.DataFrame):
-            c = c.iloc[:, 0]
-        c = c.dropna()
-        if not with_volume:
-            return c
-        v = df["Volume"]
-        if isinstance(v, pd.DataFrame):
-            v = v.iloc[:, 0]
-        return pd.DataFrame({"close": c, "volume": v.reindex(c.index)})
-    except Exception:
-        return None
 
 
 def _dl_worker(symbol, years, q, with_volume=False):
@@ -76,13 +88,18 @@ def safe_download_one(symbol, years, timeout=TIMEOUT_PER_SYMBOL, with_volume=Fal
 
 
 def _direct_fetch_info(symbol):
-    """ดึง yf.Ticker(symbol).info ตรงๆ ในโปรเซสปัจจุบัน"""
-    try:
-        import yfinance as yf
-        info = yf.Ticker(symbol).info
-        return info if info else None
-    except Exception:
-        return None
+    """ดึง yf.Ticker(symbol).info ตรงๆ ในโปรเซสปัจจุบัน — retry กันโดน Yahoo rate-limit ชั่วคราว"""
+    import yfinance as yf
+    for attempt in range(1, RETRY_ATTEMPTS + 1):
+        try:
+            info = yf.Ticker(symbol).info
+            return info if info else None
+        except Exception as e:
+            is_rate_limit = "RateLimit" in type(e).__name__ or "Too Many Requests" in str(e)
+            if is_rate_limit and attempt < RETRY_ATTEMPTS:
+                time.sleep(RETRY_BACKOFF_SEC * attempt)
+                continue
+            return None
 
 
 def _info_worker(symbol, q):
@@ -90,7 +107,7 @@ def _info_worker(symbol, q):
     q.put(("ok", info))
 
 
-def safe_fetch_info(symbol, timeout=15):
+def safe_fetch_info(symbol, timeout=30):
     """ดึง yf.Ticker(symbol).info แบบแยกโปรเซส กัน segfault ลามมาที่แอปหลัก (เช่นเดียวกับ safe_download_one)"""
     if not _HAS_FORK:
         return _direct_fetch_info(symbol)
