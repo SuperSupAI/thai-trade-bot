@@ -153,6 +153,7 @@ def build_and_sim(close, setclose, fee, use_scaling=False, use_ema_cross=False, 
 
     c = df["close"].values
     ret = df["close"].pct_change().fillna(0).values
+    e5 = df["ema5"].values
     e50 = df["ema50"].values
 
     held, ep, run_eq, days_in = 0.0, 0.0, 1.0, 0
@@ -188,11 +189,14 @@ def build_and_sim(close, setclose, fee, use_scaling=False, use_ema_cross=False, 
                     peak_at_20pct = price
                     events.append((i, "SELL 50%", price))
 
-                # ขายหมด
+                # ขายหมด — หลังขายบางส่วนแล้ว (sold_at_10pct) รัดเข็มขัดด้วย EMA5 (ไวกว่า EMA50)
+                # เพื่อป้องกันกำไรที่เหลือ ก่อนขายยังไม่ถึง 10% ปล่อยวิ่งด้วย EMA50 ตามเดิม
                 reason = None
                 if chg <= -CUT:
                     reason = "SL -8%"
-                elif price < e50[i]:
+                elif sold_at_10pct and price < e5[i]:
+                    reason = "ตัด EMA5 (หลังขาย 50%)"
+                elif not sold_at_10pct and price < e50[i]:
                     reason = "หลุด EMA50"
                 elif sold_at_20pct and price <= peak_at_20pct * 0.95:
                     reason = "หลุด -5% from 20%"
