@@ -359,6 +359,18 @@ US_DR_STOCKS = [
     "TSLA80", "UBER06", "UNH19", "VISA80",
 ]
 
+# DR บนตลาดหลักทรัพย์ไทย ที่อ้างอิงหุ้นบริษัท "ไม่ใช่สัญชาติอเมริกัน" (แม้จะซื้อขายในตลาด US
+# หรือมีชื่อเสียงระดับโลกก็ตาม) — แยกกลุ่มจาก US_DR_STOCKS ตามที่ขอเพิ่ม
+NON_US_DR_STOCKS = [
+    "ASML01",     # ASML Holding — เนเธอร์แลนด์
+    "FERRARI80",  # Ferrari — เนเธอร์แลนด์ (จดทะเบียน NV แม้สำนักงานใหญ่อิตาลี)
+    "ONON03",     # On Holding — สวิตเซอร์แลนด์
+    "SPOT06",     # Spotify — ลักเซมเบิร์ก
+    "UNIQLO80",   # Fast Retailing (Uniqlo) — ญี่ปุ่น
+    "MNSO80",     # Miniso — จีน
+    "MELI06",     # MercadoLibre — อุรุกวัย/ละตินอเมริกา (จดทะเบียนที่ Delaware แต่ธุรกิจหลักละตินอเมริกา)
+]
+
 
 def get_market_type(symbol):
     """แยก market type จาก symbol: 'Regular' (SET/mai) หรือ 'DR/Foreign' (special segments)"""
@@ -409,6 +421,8 @@ def group_symbols(group):
         return get_all_set_stocks()  # ดึงทุกหุ้นใน SET
     elif group == "DR หุ้นอเมริกา (มีใน SET)":
         return [s + ".BK" for s in US_DR_STOCKS]
+    elif group == "DR หุ้นต่างชาติอื่นๆ (ไม่ใช่อเมริกา)":
+        return [s + ".BK" for s in NON_US_DR_STOCKS]
     else:
         syms = SECTORS.get(group, [])
         return [s + ".BK" for s in syms]
