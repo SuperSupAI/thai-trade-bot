@@ -83,6 +83,7 @@ def find_hh_hl_breakout_signal(close, lookback=3, low_tolerance=0.05, monitor_da
     ema5 = close.ewm(span=5, adjust=False).mean().values
     is_high, is_low = find_pivots(close, lookback)
     signal = np.zeros(n, dtype=bool)
+    is_reentry = np.zeros(n, dtype=bool)   # True = เข้าใหม่จากการทะลุ high2 ซ้ำ (ไม่ใช่ breakout ชุดแรก)
     stage = 0
     low1 = low2 = high1 = high2 = None
 
@@ -100,6 +101,7 @@ def find_hh_hl_breakout_signal(close, lookback=3, low_tolerance=0.05, monitor_da
             elif i <= watch_deadline:
                 if c[i] > watch_level:
                     signal[i] = True
+                    is_reentry[i] = True
                     watch_level = watch_broke_ema5 = watch_deadline = None
                     stage, low1, low2, high1, high2 = 0, None, None, None, None
                     continue
@@ -140,7 +142,7 @@ def find_hh_hl_breakout_signal(close, lookback=3, low_tolerance=0.05, monitor_da
                 else:
                     stage, low1, low2, high1, high2 = 0, None, None, None, None
 
-    return signal
+    return signal, is_reentry
 
 
 def build_and_sim(close, setclose, fee, use_scaling=False, use_ema_cross=False, use_hh_hl=False, use_ema5_trail=False):
@@ -148,10 +150,12 @@ def build_and_sim(close, setclose, fee, use_scaling=False, use_ema_cross=False, 
     df["ema5"] = ema(close, 5); df["ema10"] = ema(close, 10); df["ema50"] = ema(close, 50)
     df["ema100"] = ema(close, 100); df["ema200"] = ema(close, 200)
     df["rsi"] = rsi(close); df["macd"] = ema(close, 12) - ema(close, 26)
+    hh_hl_reentry = None
     if use_hh_hl:
         # เข้าตอนราคาทะลุ Swing High หลังเกิดแพทเทิร์น Higher-High/Higher-Low 2 ชุดติดกัน (price action breakout)
         # เพิ่มเงื่อนไข: ราคาต้องอยู่เหนือ EMA200 (กรองหุ้นขาลง/sideways ต่ำกว่าแนวโน้มใหญ่)
-        stock_ok = pd.Series(find_hh_hl_breakout_signal(close), index=df.index) & (df["close"] > df["ema200"])
+        hh_hl_signal, hh_hl_reentry = find_hh_hl_breakout_signal(close)
+        stock_ok = pd.Series(hh_hl_signal, index=df.index) & (df["close"] > df["ema200"])
     elif use_ema_cross:
         # เข้าเฉพาะวันที่ EMA50 ตัดขึ้น EMA100 (ครั้งแรก) — ไม่บังคับ EMA50>EMA200 ฝั่งหุ้น
         # เพราะตอนตัดขึ้น EMA50 มักยังไม่ทัน EMA200 (เส้นช้ากว่า)
@@ -248,7 +252,8 @@ def build_and_sim(close, setclose, fee, use_scaling=False, use_ema_cross=False, 
                 sold_at_10pct = False
                 sold_at_20pct = False
                 peak_at_20pct = 0.0
-                events.append((i, "BUY", price))
+                is_reentry_buy = hh_hl_reentry is not None and hh_hl_reentry[i]
+                events.append((i, "BUY2" if is_reentry_buy else "BUY", price))
 
         day_ret = r - ft; strat.append(day_ret); run_eq *= (1 + day_ret)
 
@@ -335,10 +340,13 @@ def show_stock_detail(symbol, close, setclose, fee, cap, use_scaling=False, use_
     layers = [line, e5, e10, e50, e100, e200]
     if not mk.empty:
         buy = mk[mk.act == "BUY"]
+        buy2 = mk[mk.act == "BUY2"]
         sell_partial = mk[mk.act == "SELL 50%"]
         sell_all = mk[mk.act.isin(["SELL", "SELL ALL"])]
         if not buy.empty:
             layers.append(alt.Chart(buy).mark_point(shape="triangle-up", size=90, color="#2ea043", filled=True).encode(x="date:T", y="price:Q"))
+        if not buy2.empty:
+            layers.append(alt.Chart(buy2).mark_point(shape="triangle-up", size=90, color="#d29922", filled=True).encode(x="date:T", y="price:Q"))
         if not sell_partial.empty:
             layers.append(alt.Chart(sell_partial).mark_point(shape="circle", size=80, color="#f0883e", filled=True).encode(x="date:T", y="price:Q"))
         if not sell_all.empty:
@@ -356,7 +364,7 @@ def show_stock_detail(symbol, close, setclose, fee, cap, use_scaling=False, use_
     vol = load_volume(symbol, years) if years else None
     if vol is not None and not vol.empty:
         vdf = pd.DataFrame({"date": df.index, "volume": vol.reindex(df.index).values})
-        buy_dates = set(mk[mk.act == "BUY"]["date"]) if not mk.empty else set()
+        buy_dates = set(mk[mk.act.isin(["BUY", "BUY2"])]["date"]) if not mk.empty else set()
         vdf["is_buy"] = vdf["date"].isin(buy_dates)
         vol_chart = alt.Chart(vdf).mark_bar().encode(
             x="date:T",
@@ -369,7 +377,8 @@ def show_stock_detail(symbol, close, setclose, fee, cap, use_scaling=False, use_
     combined = alt.vconcat(*chart_stack).resolve_scale(x='shared')
     st.altair_chart(combined.interactive(), use_container_width=True)
     st.caption("เส้น EMA: 🔵 ฟ้า = EMA5 · 🟡 เหลือง = EMA10 · 🟢 เขียว = EMA50 · 🟣 ม่วง = EMA100 · 🟠 ส้ม (เส้นประ) = EMA200")
-    st.caption("จุดซื้อขาย: 🔺 เขียว = BUY · 🔴 แดง = SELL (ขายหมด) · 🟠 ส้ม (วงกลม) = SELL 50% (ขายบางส่วน — เฉพาะกลยุทธ์ Scaling Out)")
+    st.caption("จุดซื้อขาย: 🔺 เขียว = BUY (breakout ครั้งแรก) · 🔺 เหลือง/น้ำตาล = BUY ครั้งที่ 2 (ทะลุจุดเดิมซ้ำ — เฉพาะ HH-HL Breakout) · "
+               "🔴 แดง = SELL (ขายหมด) · 🟠 ส้ม (วงกลม) = SELL 50% (ขายบางส่วน — เฉพาะกลยุทธ์ Scaling Out)")
     if vol is not None and not vol.empty:
         st.caption("Volume: 🟢 เขียว = วัน BUY · ⬛ เทา = วันอื่นๆ")
 
