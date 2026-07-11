@@ -180,6 +180,7 @@ def build_and_sim(close, setclose, fee, use_scaling=False, use_ema_cross=False, 
     c = df["close"].values
     ret = df["close"].pct_change().fillna(0).values
     e5 = df["ema5"].values
+    e30 = df["ema30"].values
     e50 = df["ema50"].values
 
     held, ep, run_eq, days_in = 0.0, 0.0, 1.0, 0
@@ -198,9 +199,12 @@ def build_and_sim(close, setclose, fee, use_scaling=False, use_ema_cross=False, 
         if held > 0:
             chg = price / ep - 1
 
-            # EMA5 Trail strategy — เงื่อนไขเดียวล้วนๆ: SL -8% หรือราคาตัด EMA5 (ไม่ผสม scaling/EMA50)
+            # ไม้ที่เข้าจากการ "เข้าครั้งที่สอง" (HH-HL re-entry) รัดเข็มขัดด้วย EMA30 แทน EMA5 (หลวมกว่า กันหลุดง่ายเกิน)
+            trail_ema = e30 if entry.get("is_reentry") else e5
+
+            # EMA5 Trail strategy — เงื่อนไขเดียวล้วนๆ: SL -8% หรือราคาตัดเส้น trail (ไม่ผสม scaling/EMA50)
             if use_ema5_trail:
-                reason = "SL -8%" if chg <= -CUT else ("ตัด EMA5" if price < e5[i] else None)
+                reason = "SL -8%" if chg <= -CUT else (("ตัด EMA30" if entry.get("is_reentry") else "ตัด EMA5") if price < trail_ema[i] else None)
                 if reason:
                     ft += fee; held = 0
                     trades.append({**entry, "exit_i": i, "exit_price": price, "reason": reason,
@@ -226,11 +230,12 @@ def build_and_sim(close, setclose, fee, use_scaling=False, use_ema_cross=False, 
 
                 # ขายหมด — หลังขายบางส่วนแล้ว (sold_at_10pct) รัดเข็มขัดด้วย EMA5 (ไวกว่า EMA50)
                 # เพื่อป้องกันกำไรที่เหลือ ก่อนขายยังไม่ถึง 10% ปล่อยวิ่งด้วย EMA50 ตามเดิม
+                # (ไม้ที่เข้าจาก "เข้าครั้งที่สอง" ใช้ EMA30 แทน EMA5)
                 reason = None
                 if chg <= -CUT:
                     reason = "SL -8%"
-                elif sold_at_10pct and price < e5[i]:
-                    reason = "ตัด EMA5 (หลังขาย 50%)"
+                elif sold_at_10pct and price < trail_ema[i]:
+                    reason = "ตัด EMA30 (หลังขาย 50%)" if entry.get("is_reentry") else "ตัด EMA5 (หลังขาย 50%)"
                 elif not sold_at_10pct and price < e50[i]:
                     reason = "หลุด EMA50"
                 elif sold_at_20pct and price <= peak_at_20pct * 0.95:
@@ -253,11 +258,11 @@ def build_and_sim(close, setclose, fee, use_scaling=False, use_ema_cross=False, 
         else:
             if cond[i]:
                 ft += fee; held = 1.0; ep = price
-                entry = {"entry_i": i, "price": price, "eq": run_eq}
+                is_reentry_buy = hh_hl_reentry is not None and hh_hl_reentry[i]
+                entry = {"entry_i": i, "price": price, "eq": run_eq, "is_reentry": is_reentry_buy}
                 sold_at_10pct = False
                 sold_at_20pct = False
                 peak_at_20pct = 0.0
-                is_reentry_buy = hh_hl_reentry is not None and hh_hl_reentry[i]
                 events.append((i, "BUY2" if is_reentry_buy else "BUY", price))
 
         day_ret = r - ft; strat.append(day_ret); run_eq *= (1 + day_ret)
