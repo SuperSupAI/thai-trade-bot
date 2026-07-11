@@ -1,0 +1,38 @@
+name: Update data cache
+
+on:
+  schedule:
+    # 11:00 UTC = 18:00 น. เวลาไทย (หลังตลาด SET ปิด 16:30 น.) ทุกวันจันทร์-ศุกร์
+    - cron: "0 11 * * 1-5"
+  workflow_dispatch: {}
+
+permissions:
+  contents: write
+
+jobs:
+  update-data:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Fetch price + fundamentals data
+        run: python scripts/update_data_cache.py
+
+      - name: Commit and push if data changed
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add data/
+          if ! git diff --cached --quiet; then
+            git commit -m "Update data cache ($(date -u +%Y-%m-%d))"
+            git push
+          else
+            echo "No data changes to commit"
+          fi
