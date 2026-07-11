@@ -126,7 +126,8 @@ def build_and_sim(close, setclose, fee, use_scaling=False, use_ema_cross=False, 
     df["rsi"] = rsi(close); df["macd"] = ema(close, 12) - ema(close, 26)
     if use_hh_hl:
         # เข้าตอนราคาทะลุ Swing High หลังเกิดแพทเทิร์น Higher-High/Higher-Low 2 ชุดติดกัน (price action breakout)
-        stock_ok = pd.Series(find_hh_hl_breakout_signal(close), index=df.index)
+        # เพิ่มเงื่อนไข: ราคาต้องอยู่เหนือ EMA200 (กรองหุ้นขาลง/sideways ต่ำกว่าแนวโน้มใหญ่)
+        stock_ok = pd.Series(find_hh_hl_breakout_signal(close), index=df.index) & (df["close"] > df["ema200"])
     elif use_ema_cross:
         # เข้าเฉพาะวันที่ EMA50 ตัดขึ้น EMA100 (ครั้งแรก) — ไม่บังคับ EMA50>EMA200 ฝั่งหุ้น
         # เพราะตอนตัดขึ้น EMA50 มักยังไม่ทัน EMA200 (เส้นช้ากว่า)
@@ -557,7 +558,8 @@ effective_ema5_trail = use_ema5_trail
 
 if effective_hh_hl:
     entry_desc = ("แพทเทิร์น **Higher-High / Higher-Low 2 ชุดติดกัน** (Low ชุด 2 ต่ำกว่าชุดแรกได้ไม่เกิน `5%`) "
-                  "แล้วราคาทะลุ Swing High ล่าสุด (breakout) — **ไม่ใช้เงื่อนไข SET** (price action ของหุ้นล้วนๆ)")
+                  "แล้วราคาทะลุ Swing High ล่าสุด (breakout) **และ** ราคาต้องอยู่เหนือ `EMA200` "
+                  "— **ไม่ใช้เงื่อนไข SET** (price action ของหุ้นล้วนๆ)")
 elif effective_ema_cross:
     entry_desc = ("วันที่ `EMA50` ตัดขึ้น `EMA100` **และ** หุ้น `Close>EMA200` · `EMA10>EMA50` · `MACD>0` "
                   "**และ** SET `Close>EMA200` · `EMA10>EMA50` · `EMA50>EMA200`")
