@@ -37,6 +37,13 @@ def load_one(symbol, years):
 
 
 @st.cache_data(ttl=3600, show_spinner=False)
+def load_volume(symbol, years):
+    """โหลดแยกต่างหาก (close+volume) เฉพาะหน้ารายตัว — ไม่ปนกับ load_one ที่โหมดสแกนใช้"""
+    df = safe_download_one(symbol, years, with_volume=True)
+    return df["volume"] if df is not None else None
+
+
+@st.cache_data(ttl=3600, show_spinner=False)
 def load_many(symbols, years):
     return safe_download_many(symbols, years, min_rows=210)
 
@@ -240,7 +247,7 @@ def build_and_sim(close, setclose, fee, use_scaling=False, use_ema_cross=False, 
     return df, events, m
 
 
-def show_stock_detail(symbol, close, setclose, fee, cap, use_scaling=False, use_ema_cross=False, use_hh_hl=False, use_ema5_trail=False):
+def show_stock_detail(symbol, close, setclose, fee, cap, use_scaling=False, use_ema_cross=False, use_hh_hl=False, use_ema5_trail=False, years=None):
     """แสดงรายละเอียดหุ้นตัวเดียว: เมตริก + กราฟจุดซื้อขาย + log"""
     df, events, m = build_and_sim(close, setclose, fee, use_scaling, use_ema_cross, use_hh_hl, use_ema5_trail)
     eq = df["equity"]
@@ -317,11 +324,28 @@ def show_stock_detail(symbol, close, setclose, fee, cap, use_scaling=False, use_
     zero_line = alt.Chart(pd.DataFrame({"y": [0]})).mark_rule(color="#666", strokeDash=[2, 2]).encode(y="y:Q")
     macd_chart = (macd_line + zero_line).properties(height=150)
 
+    chart_stack = [price_chart, macd_chart]
+
+    # Volume — แท่งสีต่างสำหรับวัน BUY
+    vol = load_volume(symbol, years) if years else None
+    if vol is not None and not vol.empty:
+        vdf = pd.DataFrame({"date": df.index, "volume": vol.reindex(df.index).values})
+        buy_dates = set(mk[mk.act == "BUY"]["date"]) if not mk.empty else set()
+        vdf["is_buy"] = vdf["date"].isin(buy_dates)
+        vol_chart = alt.Chart(vdf).mark_bar().encode(
+            x="date:T",
+            y=alt.Y("volume:Q", title="Volume"),
+            color=alt.condition(alt.datum.is_buy, alt.value("#2ea043"), alt.value("#4a5568")),
+        ).properties(height=100)
+        chart_stack.append(vol_chart)
+
     # รวมกราฟ
-    combined = alt.vconcat(price_chart, macd_chart).resolve_scale(x='shared')
+    combined = alt.vconcat(*chart_stack).resolve_scale(x='shared')
     st.altair_chart(combined.interactive(), use_container_width=True)
     st.caption("เส้น EMA: 🔵 ฟ้า = EMA5 · 🟢 เขียว = EMA50 · 🟣 ม่วง = EMA100 · 🟠 ส้ม (เส้นประ) = EMA200")
     st.caption("จุดซื้อขาย: 🔺 เขียว = BUY · 🔴 แดง = SELL (ขายหมด) · 🟠 ส้ม (วงกลม) = SELL 50% (ขายบางส่วน — เฉพาะกลยุทธ์ Scaling Out)")
+    if vol is not None and not vol.empty:
+        st.caption("Volume: 🟢 เขียว = วัน BUY · ⬛ เทา = วันอื่นๆ")
 
     trades = m["trades"]
     st.subheader(f"🧾 แต่ละไม้ที่เทรด ({len(trades)})")
@@ -554,7 +578,7 @@ if is_deep_link:
     if close_q is None:
         st.error(f"ไม่มีข้อมูล {sym_q}")
     else:
-        show_stock_detail(sym_q, close_q, setclose_q, fee_q, cap_q, effective_scaling, effective_ema_cross, effective_hh_hl, effective_ema5_trail)
+        show_stock_detail(sym_q, close_q, setclose_q, fee_q, cap_q, effective_scaling, effective_ema_cross, effective_hh_hl, effective_ema5_trail, years_q)
     st.stop()
 
 if not run:
@@ -746,5 +770,5 @@ if mode == "สแกนทั้งกลุ่ม":
 close = load_one(symbol, int(years))
 if close is None:
     st.error(f"ไม่มีข้อมูล {symbol}"); st.stop()
-show_stock_detail(symbol, close, setclose, fee, cap, use_scaling, use_ema_cross, use_hh_hl, use_ema5_trail)
+show_stock_detail(symbol, close, setclose, fee, cap, use_scaling, use_ema_cross, use_hh_hl, use_ema5_trail, int(years))
 st.caption("⚠️ backtest ≠ ผลจริง · ลองหลายตัว/หลายช่วง กัน overfit · Sandbox ≤10%")
