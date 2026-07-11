@@ -811,7 +811,34 @@ if mode == "คัดหุ้นถือยาว (Fundamental)":
         st.error("ไม่มีข้อมูล fundamental พอสำหรับกลุ่มนี้"); st.stop()
 
     res = pd.DataFrame(rows).sort_values("คะแนน", ascending=False).reset_index(drop=True)
-    st.dataframe(res, use_container_width=True, hide_index=True)
+
+    st.caption("👉 คลิกที่ชื่อหุ้น → กราฟเด้งขึ้นแท็บใหม่ทันที (ใช้เงื่อนไข/กลยุทธ์เทคนิคที่ตั้งไว้ในแถบข้าง)")
+    import html as html_lib
+    cols = ["หุ้น", "คะแนน", "P/E", "ROE", "D/E", "EBIT Margin", "EPS Growth"]
+    header = "".join(
+        f'<th style="text-align:{"left" if c == "หุ้น" else "right"};padding:6px 10px;'
+        f'border-bottom:2px solid rgba(128,128,128,.4);white-space:nowrap;">{c}</th>'
+        for c in cols
+    )
+    rows_html = []
+    for _, r in res.iterrows():
+        sym = str(r["หุ้น"])
+        url = (f"?sym={sym}&years={int(years)}&cap={cap:.0f}&fee={fee}"
+               f"&scaling={1 if use_scaling else 0}&cross={1 if use_ema_cross else 0}"
+               f"&hhhl={1 if use_hh_hl else 0}&ema5trail={1 if use_ema5_trail else 0}"
+               f"&emastack={1 if use_ema_stack else 0}&ema3050={1 if use_ema30_50_exit else 0}"
+               f"&ema3050tp15={1 if use_ema30_50_tp15_exit else 0}")
+        tds = [f'<td style="padding:6px 10px;"><a href="{html_lib.escape(url)}" target="_blank" '
+               f'style="color:#3fa7ff;text-decoration:none;font-weight:600;">{html_lib.escape(sym)}</a></td>']
+        for c in cols[1:]:
+            tds.append(f'<td style="text-align:right;padding:6px 10px;white-space:nowrap;">{html_lib.escape(str(r[c]))}</td>')
+        rows_html.append(f'<tr style="border-bottom:1px solid rgba(128,128,128,.15);">{"".join(tds)}</tr>')
+    st.markdown(
+        f'<div style="overflow-x:auto;"><table style="width:100%;border-collapse:collapse;font-size:14px;">'
+        f'<thead><tr>{header}</tr></thead><tbody>{"".join(rows_html)}</tbody></table></div>',
+        unsafe_allow_html=True,
+    )
+
     st.caption("คะแนนเต็ม 5 ข้อ: ROE>15% · EPS Growth>10% (YoY) · D/E<1.0 · EBIT Margin>10% · P/E<25 "
                "(ข้อไหนไม่มีข้อมูลนับว่าไม่ผ่านข้อนั้น) — เกณฑ์เดียวกับกรอบคิด: คุณภาพธุรกิจ (ROE/กำไรโต) "
                "+ ฐานะการเงิน (D/E/Margin) + ราคาที่จ่าย (P/E) แต่ยังไม่รวมเรื่อง moat/ผู้บริหาร/เทรนด์อุตสาหกรรม "
