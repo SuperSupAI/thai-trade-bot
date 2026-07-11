@@ -11,6 +11,5 @@ __pycache__/
 .venv/
 venv/
 
-# data cache
+# data cache — data/ ตอนนี้ track ไว้จริง (อัปเดตวันละครั้งผ่าน GitHub Action, ใช้แทนการยิง yfinance สด)
 *.csv
-data/
