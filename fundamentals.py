@@ -1,55 +1,36 @@
 """
 ดึงข้อมูลทางการเงิน (P/E, ROE, D/E, Margins ฯลฯ) จาก yfinance
 """
-import concurrent.futures
-import yfinance as yf
 from typing import Dict, Optional
 import streamlit as st
+from safe_fetch import safe_fetch_info
 
-FETCH_TIMEOUT = 8  # วินาที — yfinance Ticker.info ขึ้นชื่อเรื่องค้างไม่มีกำหนดเมื่อ Yahoo ช้า/บล็อก IP
-                    # (พบบ่อยบน cloud server) → บังคับ timeout กันหน้าเว็บค้าง
-
-
-def _fetch_info(symbol: str) -> Optional[dict]:
-    ticker = yf.Ticker(symbol)
-    info = ticker.info
-    return info if info else None
+FETCH_TIMEOUT = 15  # วินาที — yfinance Ticker.info ค้างไม่มีกำหนด/segfault ได้เมื่อ Yahoo ช้า/บล็อก IP/ตอบผิดปกติ
+                     # (พบบ่อยบน cloud server) → ดึงแบบแยกโปรเซส (เหมือน safe_download_one) กันทั้งค้างและ segfault ลามแอปหลัก
 
 
 @st.cache_data(ttl=86400, show_spinner=False)  # cache 1 วัน
 def get_fundamentals(symbol: str) -> Optional[Dict]:
     """
     ดึง financial ratios สำหรับหุ้นตัวนึง
-    Return: dict หรือ None หากไม่มีข้อมูล/หมดเวลา (ไม่ทำให้แอปค้าง)
+    Return: dict หรือ None หากไม่มีข้อมูล/หมดเวลา/segfault (ไม่ทำให้แอปหลักพังหรือค้าง)
     """
-    ex = concurrent.futures.ThreadPoolExecutor(max_workers=1)
-    try:
-        future = ex.submit(_fetch_info, symbol)
-        info = future.result(timeout=FETCH_TIMEOUT)
-        ex.shutdown(wait=False)
-        if not info:
-            return None
+    info = safe_fetch_info(symbol, timeout=FETCH_TIMEOUT)
+    if not info:
+        return None
 
-        return {
-            'symbol': symbol,
-            'pe_ratio': info.get('trailingPE'),
-            'roe': info.get('returnOnEquity'),
-            'de_ratio': info.get('debtToEquity'),
-            'gross_margin': info.get('grossMargins'),
-            'ebit_margin': info.get('operatingMargins'),
-            'eps_growth': info.get('earningsGrowth'),
-            'profit_margin': info.get('profitMargins'),
-            'price': info.get('currentPrice'),
-            'market_cap': info.get('marketCap'),
-        }
-    except concurrent.futures.TimeoutError:
-        ex.shutdown(wait=False)  # ปล่อย thread ที่ค้างทิ้งไว้เบื้องหลัง ไม่รอมัน (กัน UI ค้าง)
-        print(f"Timeout ({FETCH_TIMEOUT}s) fetching {symbol} — ข้ามไป ไม่ให้แอปค้าง")
-        return None
-    except Exception as e:
-        ex.shutdown(wait=False)
-        print(f"Error fetching {symbol}: {e}")
-        return None
+    return {
+        'symbol': symbol,
+        'pe_ratio': info.get('trailingPE'),
+        'roe': info.get('returnOnEquity'),
+        'de_ratio': info.get('debtToEquity'),
+        'gross_margin': info.get('grossMargins'),
+        'ebit_margin': info.get('operatingMargins'),
+        'eps_growth': info.get('earningsGrowth'),
+        'profit_margin': info.get('profitMargins'),
+        'price': info.get('currentPrice'),
+        'market_cap': info.get('marketCap'),
+    }
 
 
 def passes_fundamental_filter(fundamentals: Dict, criteria: Dict[str, float]) -> bool:

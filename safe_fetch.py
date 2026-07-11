@@ -75,6 +75,44 @@ def safe_download_one(symbol, years, timeout=TIMEOUT_PER_SYMBOL, with_volume=Fal
         return None
 
 
+def _direct_fetch_info(symbol):
+    """ดึง yf.Ticker(symbol).info ตรงๆ ในโปรเซสปัจจุบัน"""
+    try:
+        import yfinance as yf
+        info = yf.Ticker(symbol).info
+        return info if info else None
+    except Exception:
+        return None
+
+
+def _info_worker(symbol, q):
+    info = _direct_fetch_info(symbol)
+    q.put(("ok", info))
+
+
+def safe_fetch_info(symbol, timeout=15):
+    """ดึง yf.Ticker(symbol).info แบบแยกโปรเซส กัน segfault ลามมาที่แอปหลัก (เช่นเดียวกับ safe_download_one)"""
+    if not _HAS_FORK:
+        return _direct_fetch_info(symbol)
+
+    ctx = mp.get_context("fork")
+    q = ctx.Queue()
+    p = ctx.Process(target=_info_worker, args=(symbol, q))
+    p.start()
+    p.join(timeout)
+
+    if p.is_alive():
+        p.terminate(); p.join()
+        return None
+    if p.exitcode != 0:
+        return None
+    try:
+        status, payload = q.get_nowait()
+        return payload if status == "ok" else None
+    except Exception:
+        return None
+
+
 def safe_download_many(symbols, years, min_rows=210, progress_cb=None):
     """ดาวน์โหลดหลายตัว แบบแบ่งชุด (chunk) กันโปรเซสเยอะเกินไปพร้อมกัน
     1 ตัว segfault/ค้าง = ข้ามไปเฉย ๆ ตัวอื่นในชุดไม่กระทบ"""
