@@ -426,12 +426,31 @@ def simulate_portfolio(closes, setclose, fee, n_slots):
     return dict(eq=eq, bh=bh, trades=trades, fill=fill, idx=idx, n_slots=n_slots)
 
 
+# ── query params (คลิกจากผลสแกน → เปิดแท็บใหม่ด้วยค่าที่ใช้ตอนสแกน) ──
+# เช็คก่อนสร้าง sidebar เพื่อใช้เป็นค่าเริ่มต้นของ widget — จากนั้น sidebar จะ "ใช้งานได้จริง"
+# บนแท็บนี้ด้วย (แก้ค่าแล้วกราฟอัปเดตตาม ไม่ใช่ค่าตายตัวจากตอนสแกน)
+qp = st.query_params
+is_deep_link = "sym" in qp
+if is_deep_link:
+    sym_q = qp.get("sym", "")
+    if sym_q and not sym_q.upper().endswith(".BK"):
+        sym_q += ".BK"
+    years_q = int(qp.get("years", "5"))
+    cap_q = float(qp.get("cap", "50000"))
+    fee_q = float(qp.get("fee", "0.002"))
+    scaling_q = qp.get("scaling", "0") == "1"
+    cross_q = qp.get("cross", "0") == "1"
+    hhhl_q = qp.get("hhhl", "0") == "1"
+    ema5trail_q = qp.get("ema5trail", "0") == "1"
+    entry_idx_q = 2 if hhhl_q else (1 if cross_q else 0)
+    exit_idx_q = 2 if ema5trail_q else (1 if scaling_q else 0)
+
 # ── sidebar ──
 with st.sidebar:
     st.header("⚙️ ตั้งค่า")
     mode = st.radio("โหมด", ["หุ้นเดียว", "สแกนทั้งกลุ่ม"])
     if mode == "หุ้นเดียว":
-        symbol = st.text_input("หุ้น (เช่น PIMO.BK)", "PIMO.BK").strip().upper()
+        symbol = st.text_input("หุ้น (เช่น PIMO.BK)", sym_q if is_deep_link else "PIMO.BK").strip().upper()
     else:
         group = st.selectbox("กลุ่ม", ["SET100 (ทั้งหมด)", "SET Index"] + list(SECTORS.keys()))
         scan_style = st.radio("รูปแบบ", ["ดูรายตัว (ตาราง+คลิก)", "จัดพอร์ตหมุนเงิน (ไม่ให้ว่าง)"])
@@ -439,15 +458,16 @@ with st.sidebar:
         if scan_style.startswith("จัดพอร์ต"):
             n_slots = st.radio("ถือพร้อมกันกี่ตัว", [1, 5], horizontal=True,
                                format_func=lambda x: f"{x} ไม้")
-    years = st.slider("ปีย้อนหลัง", 1, 10, 5)
-    cap = st.number_input("เงินต้น (บาท)", 1000, 10_000_000, 50_000, 1000)
-    fee = st.number_input("ค่าธรรมเนียม %/ข้าง", 0.0, 1.0, 0.2, 0.05) / 100
+    years = st.slider("ปีย้อนหลัง", 1, 10, years_q if is_deep_link else 5)
+    cap = st.number_input("เงินต้น (บาท)", 1000, 10_000_000, int(cap_q) if is_deep_link else 50_000, 1000)
+    fee = st.number_input("ค่าธรรมเนียม %/ข้าง", 0.0, 1.0, round(fee_q * 100, 2) if is_deep_link else 0.2, 0.05) / 100
 
     st.divider()
     st.subheader("🎯 กลยุทธ์ ENTRY (เข้า)")
     entry_strategy = st.radio("เลือกเงื่อนไขเข้า",
                        ["Default (EMA10>50>200 + MACD>0)", "EMA50 ตัดขึ้น EMA100 + Trend Filter",
                         "HH-HL Breakout (2 ชุดติดกัน)"],
+                       index=entry_idx_q if is_deep_link else 0,
                        help="แบบที่ 2: เข้าเฉพาะวันที่ EMA50 ตัดขึ้น EMA100 (ครั้งแรก) + Close>EMA200 · EMA10>EMA50 · MACD>0 "
                             "(ไม่บังคับ EMA50>EMA200 ฝั่งหุ้น เพราะตอนตัดขึ้นมักยังไม่ทัน)\n\n"
                             "แบบที่ 3: เข้าตอนราคาทะลุ Swing High (breakout) หลังเกิดแพทเทิร์น Higher-High/"
@@ -461,6 +481,7 @@ with st.sidebar:
     st.subheader("🎯 กลยุทธ์ EXIT")
     strategy = st.radio("เลือกกลยุทธ์",
                        ["Default (Trail EMA50)", "Scaling Out (10%→50%, 20%→50%)", "EMA5 Trail (ตัด EMA5 ขายหมด)"],
+                       index=exit_idx_q if is_deep_link else 0,
                        help="Scaling Out: ขาย50% ที่ 10%, ขาย50% ที่ 20%, ปล่อยไป -5%\n\n"
                             "EMA5 Trail: เงื่อนไขเดียวล้วนๆ ไม่ผสม scaling — ถือเต็มไม้ ขายหมดทันทีที่ราคาปิดต่ำกว่า EMA5 "
                             "(หรือโดน SL -8% ก่อน) รัดเข็มขัดไวกว่า Default ที่ใช้ EMA50")
@@ -527,25 +548,12 @@ with st.sidebar:
     run = st.button("🚀 รัน Backtest", type="primary", use_container_width=True)
 
 # ══════════ เปิดจากลิงก์แท็บใหม่ (ดูกราฟหุ้นเดียว จากผลสแกน) ══════════
-# เช็คก่อน เพื่อให้คำอธิบายกลยุทธ์ด้านล่างตรงกับที่ใช้จริงในแท็บนี้ (ไม่ใช่ค่า default ของ sidebar)
-qp = st.query_params
-is_deep_link = "sym" in qp
-if is_deep_link:
-    sym_q = qp.get("sym", "")
-    if sym_q and not sym_q.upper().endswith(".BK"):
-        sym_q += ".BK"
-    years_q = int(qp.get("years", "5"))
-    cap_q = float(qp.get("cap", "50000"))
-    fee_q = float(qp.get("fee", "0.002"))
-    effective_scaling = qp.get("scaling", "0") == "1"
-    effective_ema_cross = qp.get("cross", "0") == "1"
-    effective_hh_hl = qp.get("hhhl", "0") == "1"
-    effective_ema5_trail = qp.get("ema5trail", "0") == "1"
-else:
-    effective_scaling = use_scaling
-    effective_ema_cross = use_ema_cross
-    effective_hh_hl = use_hh_hl
-    effective_ema5_trail = use_ema5_trail
+# sidebar ด้านบนตั้งค่าเริ่มต้นตามลิงก์ให้แล้ว จากนี้ใช้ค่า "สด" จาก sidebar เสมอ
+# (ปรับ sidebar บนแท็บนี้ได้จริง กราฟจะอัปเดตตาม ไม่ใช่ค่าตายตัวจากตอนสแกน)
+effective_scaling = use_scaling
+effective_ema_cross = use_ema_cross
+effective_hh_hl = use_hh_hl
+effective_ema5_trail = use_ema5_trail
 
 if effective_hh_hl:
     entry_desc = ("แพทเทิร์น **Higher-High / Higher-Low 2 ชุดติดกัน** (Low ชุด 2 ต่ำกว่าชุดแรกได้ไม่เกิน `5%`) "
@@ -572,13 +580,13 @@ st.markdown(f"""
 """)
 
 if is_deep_link:
-    st.caption("🔗 เปิดจากผลสแกน · ใช้เงื่อนไข/กลยุทธ์เดียวกับตอนสแกน")
-    setclose_q = load_one(SET_SYMBOL, years_q)
-    close_q = load_one(sym_q, years_q)
+    st.caption("🔗 เปิดจากผลสแกน · ปรับตั้งค่าด้านซ้ายได้เลย กราฟจะอัปเดตตาม")
+    setclose_q = load_one(SET_SYMBOL, int(years))
+    close_q = load_one(symbol, int(years))
     if close_q is None:
-        st.error(f"ไม่มีข้อมูล {sym_q}")
+        st.error(f"ไม่มีข้อมูล {symbol}")
     else:
-        show_stock_detail(sym_q, close_q, setclose_q, fee_q, cap_q, effective_scaling, effective_ema_cross, effective_hh_hl, effective_ema5_trail, years_q)
+        show_stock_detail(symbol, close_q, setclose_q, fee, cap, effective_scaling, effective_ema_cross, effective_hh_hl, effective_ema5_trail, int(years))
     st.stop()
 
 if not run:
