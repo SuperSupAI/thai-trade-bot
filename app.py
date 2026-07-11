@@ -320,18 +320,19 @@ def show_stock_detail(symbol, close, setclose, fee, cap, use_scaling=False, use_
 
     st.subheader("💹 ราคา + EMA + MACD + จุดซื้อ/ขาย")
     pdf = pd.DataFrame({"date": df.index, "close": df["close"].values,
-                        "EMA5": df["ema5"].values, "EMA50": df["ema50"].values, "EMA100": df["ema100"].values,
-                        "EMA200": df["ema200"].values, "macd": df["macd"].values})
+                        "EMA5": df["ema5"].values, "EMA10": df["ema10"].values, "EMA50": df["ema50"].values,
+                        "EMA100": df["ema100"].values, "EMA200": df["ema200"].values, "macd": df["macd"].values})
 
     # ราคา + EMA
     line = alt.Chart(pdf).mark_line(color="#9aa4b2").encode(x="date:T", y=alt.Y("close:Q", title="ราคา"))
     e5 = alt.Chart(pdf).mark_line(color="#58a6ff", strokeDash=[4, 3]).encode(x="date:T", y="EMA5:Q")
+    e10 = alt.Chart(pdf).mark_line(color="#e3b341", strokeDash=[4, 3]).encode(x="date:T", y="EMA10:Q")
     e50 = alt.Chart(pdf).mark_line(color="#3fb950", strokeDash=[4, 3]).encode(x="date:T", y="EMA50:Q")
     e100 = alt.Chart(pdf).mark_line(color="#a371f7", strokeDash=[4, 3]).encode(x="date:T", y="EMA100:Q")
     e200 = alt.Chart(pdf).mark_line(color="#f0883e", strokeDash=[4, 3]).encode(x="date:T", y="EMA200:Q")
 
     mk = pd.DataFrame([{"date": df.index[i], "price": p, "act": a} for (i, a, p) in events])
-    layers = [line, e5, e50, e100, e200]
+    layers = [line, e5, e10, e50, e100, e200]
     if not mk.empty:
         buy = mk[mk.act == "BUY"]
         sell_partial = mk[mk.act == "SELL 50%"]
@@ -367,7 +368,7 @@ def show_stock_detail(symbol, close, setclose, fee, cap, use_scaling=False, use_
     # รวมกราฟ
     combined = alt.vconcat(*chart_stack).resolve_scale(x='shared')
     st.altair_chart(combined.interactive(), use_container_width=True)
-    st.caption("เส้น EMA: 🔵 ฟ้า = EMA5 · 🟢 เขียว = EMA50 · 🟣 ม่วง = EMA100 · 🟠 ส้ม (เส้นประ) = EMA200")
+    st.caption("เส้น EMA: 🔵 ฟ้า = EMA5 · 🟡 เหลือง = EMA10 · 🟢 เขียว = EMA50 · 🟣 ม่วง = EMA100 · 🟠 ส้ม (เส้นประ) = EMA200")
     st.caption("จุดซื้อขาย: 🔺 เขียว = BUY · 🔴 แดง = SELL (ขายหมด) · 🟠 ส้ม (วงกลม) = SELL 50% (ขายบางส่วน — เฉพาะกลยุทธ์ Scaling Out)")
     if vol is not None and not vol.empty:
         st.caption("Volume: 🟢 เขียว = วัน BUY · ⬛ เทา = วันอื่นๆ")
