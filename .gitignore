@@ -11,5 +11,7 @@ __pycache__/
 .venv/
 venv/
 
-# data cache — data/ ตอนนี้ track ไว้จริง (อัปเดตวันละครั้งผ่าน GitHub Action, ใช้แทนการยิง yfinance สด)
-*.csv
+# data/*.csv ตอนนี้ track ไว้จริง (อัปเดตวันละครั้งผ่าน GitHub Action, ใช้แทนการยิง yfinance สด)
+# ยังกัน *.csv เดี่ยวๆ นอกโฟลเดอร์ data/ ที่ไม่ใช่ของ pipeline นี้ไว้เหมือนเดิม
+/*.csv
+**/scratch*.csv

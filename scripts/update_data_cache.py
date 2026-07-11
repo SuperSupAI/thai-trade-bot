@@ -63,10 +63,12 @@ def main():
         print("ไม่มีข้อมูลราคาเลย — ยกเลิกการเขียนไฟล์ (กันเขียนทับ cache เดิมด้วยข้อมูลว่าง)")
         sys.exit(1)
 
+    # ใช้ CSV แทน parquet — parquet ต้องพึ่ง pyarrow (C extension) ซึ่งเสี่ยง segfault บน
+    # Python เวอร์ชันใหม่มากๆ ของ Streamlit Cloud (เจอปัญหานี้มาแล้วกับ yfinance/curl_cffi)
     price_df = pd.DataFrame(prices).sort_index()
     vol_df = pd.DataFrame(volumes).sort_index()
-    price_df.to_parquet(os.path.join(DATA_DIR, "prices.parquet"))
-    vol_df.to_parquet(os.path.join(DATA_DIR, "volumes.parquet"))
+    price_df.to_csv(os.path.join(DATA_DIR, "prices.csv"))
+    vol_df.to_csv(os.path.join(DATA_DIR, "volumes.csv"))
     with open(os.path.join(DATA_DIR, "fundamentals.json"), "w", encoding="utf-8") as f:
         json.dump(funds, f, ensure_ascii=False)
     with open(os.path.join(DATA_DIR, "updated_at.txt"), "w") as f:

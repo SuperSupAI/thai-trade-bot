@@ -534,9 +534,12 @@ if is_deep_link:
 # ── sidebar ──
 with st.sidebar:
     st.header("⚙️ ตั้งค่า")
+    # ตั้งค่าเริ่มต้นไว้ก่อนเสมอ กัน NameError ตอน mode != "หุ้นเดียว" (เช่น session ของแท็บเดิม
+    # ที่ค้างโหมด "สแกนทั้งกลุ่ม" จาก session cookie เดียวกัน แต่แท็บนี้เป็น deep link ที่ต้องใช้ symbol)
+    symbol = sym_q if is_deep_link else "PIMO.BK"
     mode = st.radio("โหมด", ["หุ้นเดียว", "สแกนทั้งกลุ่ม"])
     if mode == "หุ้นเดียว":
-        symbol = st.text_input("หุ้น (เช่น PIMO.BK)", sym_q if is_deep_link else "PIMO.BK").strip().upper()
+        symbol = st.text_input("หุ้น (เช่น PIMO.BK)", symbol).strip().upper()
     else:
         group = st.selectbox("กลุ่ม", ["SET100 (ทั้งหมด)", "SET Index"] + list(SECTORS.keys()))
         scan_style = st.radio("รูปแบบ", ["ดูรายตัว (ตาราง+คลิก)", "จัดพอร์ตหมุนเงิน (ไม่ให้ว่าง)"])

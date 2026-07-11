@@ -1,7 +1,11 @@
 """
-โหลดข้อมูลราคา/volume/fundamentals จาก data/*.parquet ที่ GitHub Action อัปเดตให้วันละครั้ง
+โหลดข้อมูลราคา/volume/fundamentals จาก data/*.csv ที่ GitHub Action อัปเดตให้วันละครั้ง
 (scripts/update_data_cache.py) — ถ้ามีในนี้ ใช้อันนี้ก่อนเสมอ ไม่ต้องยิง yfinance สด
 ถ้าไม่มี (หุ้นนอก SET100 ที่ cache ไว้ หรือไฟล์ยังไม่เคยสร้าง) ให้ผู้เรียกใช้ fallback ไปดึงสดเอง
+
+หมายเหตุ: ใช้ CSV แทน parquet โดยตั้งใจ — parquet ต้องพึ่ง pyarrow (C extension) ซึ่งเสี่ยง
+segfault บน Python เวอร์ชันใหม่มากๆ ของ Streamlit Cloud (แพทเทิร์นเดียวกับที่เจอกับ
+yfinance/curl_cffi มาก่อน) CSV ใช้แค่ pandas ล้วนๆ ไม่มี C extension เสี่ยงแบบนั้น
 """
 import json
 import os
@@ -9,8 +13,8 @@ import pandas as pd
 import streamlit as st
 
 DATA_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data")
-PRICES_PATH = os.path.join(DATA_DIR, "prices.parquet")
-VOLUMES_PATH = os.path.join(DATA_DIR, "volumes.parquet")
+PRICES_PATH = os.path.join(DATA_DIR, "prices.csv")
+VOLUMES_PATH = os.path.join(DATA_DIR, "volumes.csv")
 FUNDAMENTALS_PATH = os.path.join(DATA_DIR, "fundamentals.json")
 
 
@@ -18,14 +22,14 @@ FUNDAMENTALS_PATH = os.path.join(DATA_DIR, "fundamentals.json")
 def _load_prices():
     if not os.path.exists(PRICES_PATH):
         return None
-    return pd.read_parquet(PRICES_PATH)
+    return pd.read_csv(PRICES_PATH, index_col=0, parse_dates=True)
 
 
 @st.cache_data(ttl=3600, show_spinner=False)
 def _load_volumes():
     if not os.path.exists(VOLUMES_PATH):
         return None
-    return pd.read_parquet(VOLUMES_PATH)
+    return pd.read_csv(VOLUMES_PATH, index_col=0, parse_dates=True)
 
 
 @st.cache_data(ttl=3600, show_spinner=False)
