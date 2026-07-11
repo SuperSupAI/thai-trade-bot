@@ -371,6 +371,20 @@ NON_US_DR_STOCKS = [
     "MELI06",     # MercadoLibre — อุรุกวัย/ละตินอเมริกา (จดทะเบียนที่ Delaware แต่ธุรกิจหลักละตินอเมริกา)
 ]
 
+# หุ้นอเมริกันจริง ซื้อขายที่ตลาด US โดยตรง (ไม่ผ่าน DR ไทย) — ใช้ ticker เปล่าไม่มี .BK
+# ใช้สแกนทั้งกลุ่มได้เหมือน SET100 แต่เทียบเทรนด์กับ SPY (S&P500 ETF) แทน SET Index
+US_STOCKS = [
+    "AAPL", "MSFT", "JPM", "V", "PG", "UNH", "HD", "MRK", "KO", "CSCO",
+    "CVX", "MCD", "CRM", "WMT", "AXP", "IBM", "GS", "CAT", "HON", "AMGN",
+    "BA", "MMM", "TRV", "JNJ", "DIS", "NKE", "VZ", "DOW", "INTC",
+    "GOOGL", "AMZN", "META", "NVDA", "XOM", "PFE", "T", "COST", "PEP", "ADBE",
+    "DKS", "RH", "WSM", "ULTA", "DECK", "CROX", "FIVE", "BURL", "YETI",
+    "ETSY", "WING", "CAKE", "PLNT", "TXT", "CHRW", "HUN", "JBLU", "GNTX",
+    "POOL", "FOXF", "OMCL", "MASI", "BLKB", "SAM", "RRC", "CIEN", "ZBRA", "ENPH",
+    "FSLR", "CRSP", "EXPE", "NCLH", "RCL", "CCL", "LULU", "DPZ", "CMG", "WEN",
+]
+US_MARKET_INDEX = "SPY"  # ใช้แทน SET Index สำหรับกรอง "เทรนด์ตลาดใหญ่" ตอนสแกนหุ้น US
+
 
 def get_market_type(symbol):
     """แยก market type จาก symbol: 'Regular' (SET/mai) หรือ 'DR/Foreign' (special segments)"""
@@ -412,6 +426,11 @@ def get_all_set_stocks():
     return _fetch_stocks()
 
 
+def is_us_group(group):
+    """True ถ้ากลุ่มที่เลือกเป็นหุ้น US จริง (ต้องใช้ SPY แทน SET Index เป็นตัวกรองเทรนด์ตลาดใหญ่)"""
+    return group == "US100 (หุ้นอเมริกาจริง)"
+
+
 def group_symbols(group):
     """คืน list สัญลักษณ์ (เติม .BK) ของกลุ่มที่เลือก · 'SET100' = รวม 80+ · 'SET Index' = ทุกหุ้น SET ~900+"""
     if group == "SET100 (ทั้งหมด)":
@@ -421,6 +440,8 @@ def group_symbols(group):
         return get_all_set_stocks()  # ดึงทุกหุ้นใน SET
     elif group == "DR หุ้นอเมริกา (มีใน SET)":
         return [s + ".BK" for s in US_DR_STOCKS]
+    elif group == "US100 (หุ้นอเมริกาจริง)":
+        return list(US_STOCKS)  # ไม่เติม .BK — ticker US จริง
     elif group == "DR หุ้นต่างชาติอื่นๆ (ไม่ใช่อเมริกา)":
         return [s + ".BK" for s in NON_US_DR_STOCKS]
     else:
