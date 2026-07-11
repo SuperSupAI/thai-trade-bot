@@ -592,16 +592,18 @@ with st.sidebar:
     # ตั้งค่าเริ่มต้นไว้ก่อนเสมอ กัน NameError ตอน mode != "หุ้นเดียว" (เช่น session ของแท็บเดิม
     # ที่ค้างโหมด "สแกนทั้งกลุ่ม" จาก session cookie เดียวกัน แต่แท็บนี้เป็น deep link ที่ต้องใช้ symbol)
     symbol = sym_q if is_deep_link else "PIMO.BK"
-    mode = st.radio("โหมด", ["หุ้นเดียว", "สแกนทั้งกลุ่ม"])
+    mode = st.radio("โหมด", ["หุ้นเดียว", "สแกนทั้งกลุ่ม", "คัดหุ้นถือยาว (Fundamental)"])
     if mode == "หุ้นเดียว":
         symbol = st.text_input("หุ้น (เช่น PIMO.BK)", symbol).strip().upper()
-    else:
+    elif mode == "สแกนทั้งกลุ่ม":
         group = st.selectbox("กลุ่ม", ["SET100 (ทั้งหมด)", "SET Index"] + list(SECTORS.keys()))
         scan_style = st.radio("รูปแบบ", ["ดูรายตัว (ตาราง+คลิก)", "จัดพอร์ตหมุนเงิน (ไม่ให้ว่าง)"])
         n_slots = 1
         if scan_style.startswith("จัดพอร์ต"):
             n_slots = st.radio("ถือพร้อมกันกี่ตัว", [1, 5], horizontal=True,
                                format_func=lambda x: f"{x} ไม้")
+    else:  # คัดหุ้นถือยาว
+        group = st.selectbox("กลุ่ม", ["SET100 (ทั้งหมด)"] + list(SECTORS.keys()), key="screener_group")
     years = st.slider("ปีย้อนหลัง", 1, 10, years_q if is_deep_link else 5)
     cap = st.number_input("เงินต้น (บาท)", 1000, 10_000_000, int(cap_q) if is_deep_link else 50_000, 1000)
     fee = st.number_input("ค่าธรรมเนียม %/ข้าง", 0.0, 1.0, round(fee_q * 100, 2) if is_deep_link else 0.2, 0.05) / 100
@@ -768,6 +770,56 @@ if not run:
 setclose = load_one(SET_SYMBOL, int(years))
 if setclose is None:
     st.warning("⚠️ ไม่พบข้อมูล SET — ใช้เงื่อนไขหุ้นอย่างเดียว")
+
+# ══════════ โหมดคัดหุ้นถือยาว (Fundamental Screener) ══════════
+if mode == "คัดหุ้นถือยาว (Fundamental)":
+    syms = group_symbols(group)
+    st.subheader(f"🧭 คัดหุ้นถือยาว: {group} ({len(syms)} ตัว)")
+    st.caption("ให้คะแนนจากงบการเงินปัจจุบัน (ไม่ดูกราฟ/เทคนิคเลย) — จุดเริ่มต้นหาหุ้นถือยาว ไม่ใช่คำแนะนำลงทุน")
+
+    rows = []
+    prog = st.progress(0.0)
+    for i, sym in enumerate(syms):
+        fund = get_fundamentals(sym)
+        if fund:
+            roe = fund.get('roe')
+            eps_g = fund.get('eps_growth')
+            de = fund.get('de_ratio')
+            ebit_m = fund.get('ebit_margin')
+            pe = fund.get('pe_ratio')
+
+            score = 0
+            score += 1 if (roe is not None and roe > 0.15) else 0
+            score += 1 if (eps_g is not None and eps_g > 0.10) else 0
+            score += 1 if (de is not None and de < 1.0) else 0
+            score += 1 if (ebit_m is not None and ebit_m > 0.10) else 0
+            score += 1 if (pe is not None and 0 < pe < 25) else 0
+
+            rows.append({
+                "หุ้น": sym.replace(".BK", ""),
+                "คะแนน": score,
+                "P/E": format_ratio(pe, ".2f"),
+                "ROE": format_ratio(roe, ".2%"),
+                "D/E": format_ratio(de, ".2f"),
+                "EBIT Margin": format_ratio(ebit_m, ".2%"),
+                "EPS Growth": format_ratio(eps_g, ".2%"),
+            })
+        prog.progress((i + 1) / len(syms))
+    prog.empty()
+
+    if not rows:
+        st.error("ไม่มีข้อมูล fundamental พอสำหรับกลุ่มนี้"); st.stop()
+
+    res = pd.DataFrame(rows).sort_values("คะแนน", ascending=False).reset_index(drop=True)
+    st.dataframe(res, use_container_width=True, hide_index=True)
+    st.caption("คะแนนเต็ม 5 ข้อ: ROE>15% · EPS Growth>10% (YoY) · D/E<1.0 · EBIT Margin>10% · P/E<25 "
+               "(ข้อไหนไม่มีข้อมูลนับว่าไม่ผ่านข้อนั้น) — เกณฑ์เดียวกับกรอบคิด: คุณภาพธุรกิจ (ROE/กำไรโต) "
+               "+ ฐานะการเงิน (D/E/Margin) + ราคาที่จ่าย (P/E) แต่ยังไม่รวมเรื่อง moat/ผู้บริหาร/เทรนด์อุตสาหกรรม "
+               "ที่ต้องดูเองเพิ่ม")
+    top = res[res["คะแนน"] >= 4]
+    if not top.empty:
+        st.success(f"หุ้นคะแนน 4-5/5 เต็ม: {', '.join(top['หุ้น'].tolist())}")
+    st.stop()
 
 # ══════════ โหมดสแกนทั้งกลุ่ม ══════════
 if mode == "สแกนทั้งกลุ่ม":
