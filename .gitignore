@@ -15,3 +15,7 @@ venv/
 # ยังกัน *.csv เดี่ยวๆ นอกโฟลเดอร์ data/ ที่ไม่ใช่ของ pipeline นี้ไว้เหมือนเดิม
 /*.csv
 **/scratch*.csv
+
+# ไฟล์ zip ต้นฉบับข้อมูล 50 ปี (~100MB เกิน limit ของ GitHub) — แปลงเป็น data/archive_*.csv แล้ว
+# เก็บไว้เครื่อง local เฉยๆ ไม่ต้องขึ้น repo
+set-archive_EOD_1970-LAST.zip
