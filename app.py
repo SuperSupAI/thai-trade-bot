@@ -596,14 +596,14 @@ with st.sidebar:
     if mode == "หุ้นเดียว":
         symbol = st.text_input("หุ้น (เช่น PIMO.BK)", symbol).strip().upper()
     elif mode == "สแกนทั้งกลุ่ม":
-        group = st.selectbox("กลุ่ม", ["SET100 (ทั้งหมด)", "SET Index"] + list(SECTORS.keys()))
+        group = st.selectbox("กลุ่ม", ["SET100 (ทั้งหมด)", "SET Index", "DR หุ้นอเมริกา (มีใน SET)"] + list(SECTORS.keys()))
         scan_style = st.radio("รูปแบบ", ["ดูรายตัว (ตาราง+คลิก)", "จัดพอร์ตหมุนเงิน (ไม่ให้ว่าง)"])
         n_slots = 1
         if scan_style.startswith("จัดพอร์ต"):
             n_slots = st.radio("ถือพร้อมกันกี่ตัว", [1, 5], horizontal=True,
                                format_func=lambda x: f"{x} ไม้")
     else:  # คัดหุ้นถือยาว
-        group = st.selectbox("กลุ่ม", ["SET100 (ทั้งหมด)"] + list(SECTORS.keys()), key="screener_group")
+        group = st.selectbox("กลุ่ม", ["SET100 (ทั้งหมด)", "DR หุ้นอเมริกา (มีใน SET)"] + list(SECTORS.keys()), key="screener_group")
     years = st.slider("ปีย้อนหลัง", 1, 10, years_q if is_deep_link else 5)
     cap = st.number_input("เงินต้น (บาท)", 1000, 10_000_000, int(cap_q) if is_deep_link else 50_000, 1000)
     fee = st.number_input("ค่าธรรมเนียม %/ข้าง", 0.0, 1.0, round(fee_q * 100, 2) if is_deep_link else 0.2, 0.05) / 100

@@ -346,6 +346,19 @@ SECTORS = {
                        "WHA", "AMATA", "STEC", "CK", "TPIPL"],
 }
 
+# DR (Depositary Receipt) บนตลาดหลักทรัพย์ไทย ที่อ้างอิงหุ้นบริษัทสัญชาติอเมริกันแท้ๆ เท่านั้น
+# (คัดออก: ASML/เนเธอร์แลนด์, Ferrari/เนเธอร์แลนด์, On Holding/สวิส, Spotify/ลักเซมเบิร์ก,
+#  Uniqlo-Fast Retailing/ญี่ปุ่น, Miniso/จีน — แม้จะมี DR ในไทยแต่ไม่ใช่บริษัทอเมริกัน)
+# เลือกมาแค่ 1 DR series ต่อ 1 บริษัท (ราคาเคลื่อนไหวตามหุ้นแม่เหมือนกันไม่ว่าจะ series ไหน)
+US_DR_STOCKS = [
+    "AAPL80", "ABBV19", "ADBE06", "AMD80", "AMZN80", "AVGO80", "BAC03", "BDX06", "BKNG80",
+    "BRKB80", "COSTCO19", "CRM01", "CRWD80", "CSCO06", "DELL19", "DISNEY19", "ESTEE80",
+    "GOOG80", "GOOGL01", "GSUS06", "HOOD06", "ISRG01", "JNJ03", "JPMUS06", "KO80", "LLY80",
+    "LULU06", "MA80", "META80", "MICRON01", "MNST06", "MS06", "NDAQ06", "NFLX80", "NIKE80",
+    "NVDA80", "ORCL01", "PANW80", "PEP80", "PFIZER19", "PLTR01", "RBLX06", "SBUX80", "SNOW06",
+    "TSLA80", "UBER06", "UNH19", "VISA80",
+]
+
 
 def get_market_type(symbol):
     """แยก market type จาก symbol: 'Regular' (SET/mai) หรือ 'DR/Foreign' (special segments)"""
@@ -394,6 +407,8 @@ def group_symbols(group):
         return [s + ".BK" for s in syms]
     elif group == "SET Index":
         return get_all_set_stocks()  # ดึงทุกหุ้นใน SET
+    elif group == "DR หุ้นอเมริกา (มีใน SET)":
+        return [s + ".BK" for s in US_DR_STOCKS]
     else:
         syms = SECTORS.get(group, [])
         return [s + ".BK" for s in syms]
