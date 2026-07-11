@@ -169,8 +169,12 @@ def build_and_sim(close, setclose, fee, use_scaling=False, use_ema_cross=False, 
         stock_ok = (df["close"] > df["ema200"]) & (df["ema10"] > df["ema50"]) & (df["macd"] > 0) & cross_up
     elif use_ema_stack:
         # เรียงเต็มขั้นบันได: Close>EMA5>EMA10>EMA30>EMA50>EMA100>EMA200 (แนวโน้มขึ้นชัดเจนทุกกรอบเวลา)
+        # + ต้องมีการ breakout จริงในรอบ 1 ปีที่ผ่านมา (ราคาทำ New High 252 วันเทรด) ไม่งั้นไม่เข้า
+        yr_high = df["close"].rolling(252, min_periods=60).max()
+        broke_1y_high = df["close"] >= yr_high
         stock_ok = (df["close"] > df["ema5"]) & (df["ema5"] > df["ema10"]) & (df["ema10"] > df["ema30"]) \
-            & (df["ema30"] > df["ema50"]) & (df["ema50"] > df["ema100"]) & (df["ema100"] > df["ema200"])
+            & (df["ema30"] > df["ema50"]) & (df["ema50"] > df["ema100"]) & (df["ema100"] > df["ema200"]) \
+            & broke_1y_high
     else:
         stock_ok = (df["close"] > df["ema200"]) & (df["ema10"] > df["ema50"]) \
             & (df["ema50"] > df["ema200"]) & (df["macd"] > 0)
@@ -539,7 +543,8 @@ with st.sidebar:
                             "และไม่ใช้เงื่อนไข SET เลย "
                             "(Low ชุดที่ 2 ยังนับเป็น Higher Low ได้ถ้าต่ำกว่า Low ชุดแรกไม่เกิน 5%)\n\n"
                             "แบบที่ 4: หุ้น `Close>EMA5>EMA10>EMA30>EMA50>EMA100>EMA200` เรียงขั้นบันไดครบทุกเส้น "
-                            "(แนวโน้มขึ้นชัดเจนทุกกรอบเวลา) — เช็คตอนปิดตลาด ซื้อได้ระหว่างวันถัดไป")
+                            "(แนวโน้มขึ้นชัดเจนทุกกรอบเวลา) **และ** ต้องทำ New High รอบ 1 ปี (252 วันเทรด) ด้วย "
+                            "— ถ้าไม่เบรก 1 ปีย้อนหลังไม่เข้า — เช็คตอนปิดตลาด ซื้อได้ระหว่างวันถัดไป")
     use_ema_cross = entry_strategy == "EMA50 ตัดขึ้น EMA100 + Trend Filter"
     use_hh_hl = entry_strategy == "HH-HL Breakout (2 ชุดติดกัน)"
     use_ema_stack = entry_strategy == "EMA Stack เรียงขั้นบันได (5>10>30>50>100>200)"
@@ -629,7 +634,9 @@ effective_ema_stack = use_ema_stack
 effective_ema30_50_exit = use_ema30_50_exit
 
 if effective_ema_stack:
-    entry_desc = "หุ้น `Close>EMA5>EMA10>EMA30>EMA50>EMA100>EMA200` เรียงขั้นบันไดครบทุกเส้น (แนวโน้มขึ้นชัดเจนทุกกรอบเวลา) — **ไม่ใช้เงื่อนไข SET**"
+    entry_desc = ("หุ้น `Close>EMA5>EMA10>EMA30>EMA50>EMA100>EMA200` เรียงขั้นบันไดครบทุกเส้น (แนวโน้มขึ้นชัดเจนทุกกรอบเวลา) "
+                  "**และ** ราคาต้องทำ **New High รอบ 1 ปี** (breakout จริงในช่วง 1 ปีที่ผ่านมา — ถ้าไม่เบรกไม่เข้า) "
+                  "— **ไม่ใช้เงื่อนไข SET**")
 elif effective_hh_hl:
     entry_desc = ("แพทเทิร์น **Higher-High / Higher-Low 2 ชุดติดกัน** (Low ชุด 2 ต่ำกว่าชุดแรกได้ไม่เกิน `5%`) "
                   "แล้วราคาทะลุ Swing High ล่าสุด (breakout) **และ** ราคาต้องอยู่เหนือ `EMA200` "
