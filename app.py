@@ -76,41 +76,46 @@ def find_hh_hl_breakout_signal(close, lookback=3, low_tolerance=0.05, monitor_da
     low_tolerance: Low2 ยังถือว่าเป็น Higher Low ได้ ถ้าต่ำกว่า Low1 ไม่เกินสัดส่วนนี้ (กันหลุดโดย noise เล็กน้อย)
 
     monitor_days: หลัง breakout ครั้งแรก ถ้าราคาหลุด EMA5 → เฝ้ามอนิเตอร์อีก ~2 เดือน (42 วันเทรด)
-    ถ้าในช่วงนี้ราคาทะลุ high2 (จุดเดิม) ซ้ำอีกครั้ง → เข้าใหม่ทันที ไม่ต้องรอสร้างแพทเทิร์น HH-HL ใหม่ทั้งชุด
+    ถ้าในช่วงนี้ราคาทะลุจุดสูงสุดที่เคยขึ้นไปถึงระหว่างถือไม้แรก (ไม่ใช่ราคาที่ breakout เข้าซื้อ) ซ้ำอีกครั้ง
+    → เข้าใหม่ทันที ไม่ต้องรอสร้างแพทเทิร์น HH-HL ใหม่ทั้งชุด
     """
     c = close.values
     n = len(c)
     ema5 = close.ewm(span=5, adjust=False).mean().values
     is_high, is_low = find_pivots(close, lookback)
     signal = np.zeros(n, dtype=bool)
-    is_reentry = np.zeros(n, dtype=bool)   # True = เข้าใหม่จากการทะลุ high2 ซ้ำ (ไม่ใช่ breakout ชุดแรก)
+    is_reentry = np.zeros(n, dtype=bool)   # True = เข้าใหม่จากการทะลุจุดสูงสุดของไม้แรกซ้ำ (ไม่ใช่ breakout ชุดแรก)
     stage = 0
     low1 = low2 = high1 = high2 = None
 
-    # เฝ้าระวังการทะลุซ้ำของ high2 ล่าสุดที่เคย breakout ไปแล้ว
+    # เฝ้าระวังการทะลุซ้ำของจุดสูงสุดที่เคยขึ้นไปถึงระหว่างถือไม้แรก (ตั้งแต่วัน breakout จนถึงวันที่หลุด EMA5)
+    in_trade = False
+    trade_peak = None
     watch_level = None
-    watch_broke_ema5 = False
     watch_deadline = None
 
     for i in range(n):
-        if watch_level is not None:
-            if not watch_broke_ema5:
-                if c[i] < ema5[i]:
-                    watch_broke_ema5 = True
-                    watch_deadline = i + monitor_days
-            elif i <= watch_deadline:
+        if in_trade:
+            trade_peak = max(trade_peak, c[i])
+            if c[i] < ema5[i]:
+                in_trade = False
+                watch_level = trade_peak
+                watch_deadline = i + monitor_days
+        elif watch_level is not None:
+            if i <= watch_deadline:
                 if c[i] > watch_level:
                     signal[i] = True
                     is_reentry[i] = True
-                    watch_level = watch_broke_ema5 = watch_deadline = None
+                    watch_level = watch_deadline = None
                     stage, low1, low2, high1, high2 = 0, None, None, None, None
                     continue
             else:
-                watch_level = watch_broke_ema5 = watch_deadline = None
+                watch_level = watch_deadline = None
 
         if stage == 4 and c[i] > high2:
             signal[i] = True
-            watch_level, watch_broke_ema5, watch_deadline = high2, False, None
+            in_trade, trade_peak = True, c[i]
+            watch_level = watch_deadline = None
             stage, low1, low2, high1, high2 = 0, None, None, None, None
             continue
 
@@ -594,8 +599,9 @@ if effective_hh_hl:
     entry_desc = ("แพทเทิร์น **Higher-High / Higher-Low 2 ชุดติดกัน** (Low ชุด 2 ต่ำกว่าชุดแรกได้ไม่เกิน `5%`) "
                   "แล้วราคาทะลุ Swing High ล่าสุด (breakout) **และ** ราคาต้องอยู่เหนือ `EMA200` "
                   "— **ไม่ใช้เงื่อนไข SET** (price action ของหุ้นล้วนๆ)\n\n"
-                  "หลัง breakout ถ้าราคาหลุด `EMA5` → **มอนิเตอร์ต่ออีก ~2 เดือน** ถ้าราคาทะลุ Swing High "
-                  "จุดเดิมซ้ำอีกครั้งในช่วงนี้ → **เข้าใหม่ทันที** (ไม่ต้องรอสร้างแพทเทิร์น HH-HL ชุดใหม่)")
+                  "หลัง breakout ถ้าราคาหลุด `EMA5` → **มอนิเตอร์ต่ออีก ~2 เดือน** ถ้าราคาทะลุ**จุดสูงสุดที่เคยขึ้นไปถึง"
+                  "ระหว่างถือไม้แรก** (ไม่ใช่ราคาที่ breakout เข้าซื้อ) ซ้ำอีกครั้งในช่วงนี้ → **เข้าใหม่ทันที** "
+                  "(ไม่ต้องรอสร้างแพทเทิร์น HH-HL ชุดใหม่)")
 elif effective_ema_cross:
     entry_desc = ("วันที่ `EMA50` ตัดขึ้น `EMA100` **และ** หุ้น `Close>EMA200` · `EMA10>EMA50` · `MACD>0` "
                   "**และ** SET `Close>EMA200` · `EMA10>EMA50` · `EMA50>EMA200`")
