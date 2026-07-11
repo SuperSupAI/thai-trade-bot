@@ -25,11 +25,12 @@ def get_fundamentals(symbol: str) -> Optional[Dict]:
     if not info:
         return None
 
+    de_raw = info.get('debtToEquity')  # yfinance คืนเป็น % (เช่น 60.6 แปลว่า D/E=0.606) ไม่ใช่ ratio ตรงๆ
     return {
         'symbol': symbol,
         'pe_ratio': info.get('trailingPE'),
         'roe': info.get('returnOnEquity'),
-        'de_ratio': info.get('debtToEquity'),
+        'de_ratio': (de_raw / 100) if de_raw is not None else None,
         'gross_margin': info.get('grossMargins'),
         'ebit_margin': info.get('operatingMargins'),
         'eps_growth': info.get('earningsGrowth'),
