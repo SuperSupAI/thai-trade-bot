@@ -467,20 +467,47 @@ def show_stock_detail(symbol, close, setclose, fee, cap, use_scaling=False, use_
         st.info("ไม่มีสัญญาณเข้าในช่วงนี้")
 
 
-def simulate_portfolio(closes, setclose, fee, n_slots):
-    """พอร์ตหมุนเงิน: ถือได้ n_slots ตัวพร้อมกัน · ออกตัวนึง → เอาเงินไปเข้าตัวอื่นที่มีสัญญาณ (ไม่ถือเงินเฉย)"""
+def simulate_portfolio(closes, setclose, fee, n_slots, use_scaling=False, use_ema_cross=False, use_hh_hl=False,
+                        use_ema5_trail=False, use_ema_stack=False, use_ema30_50_exit=False, use_ema30_50_tp15_exit=False):
+    """พอร์ตหมุนเงิน: ถือได้ n_slots ตัวพร้อมกัน · ออกตัวนึง → เอาเงินไปเข้าตัวอื่นที่มีสัญญาณ (ไม่ถือเงินเฉย)
+    ใช้เงื่อนไขเข้า/ออกเดียวกับที่เลือกในแถบข้าง (เหมือน build_and_sim) — ยกเว้น Scaling Out ที่ตกไปใช้
+    Default (SL-8%/หลุด EMA50) แทน เพราะขายบางส่วนไม่เข้ากับโมเดล 'ช่อง' ที่ถือเต็ม-ว่างของโหมดนี้"""
     prices = pd.DataFrame(closes).sort_index().ffill().dropna(how="all")
-    e50 = prices.ewm(span=50, adjust=False).mean()
-    e200 = prices.ewm(span=200, adjust=False).mean()
+    e5 = prices.ewm(span=5, adjust=False).mean()
     e10 = prices.ewm(span=10, adjust=False).mean()
+    e30 = prices.ewm(span=30, adjust=False).mean()
+    e50 = prices.ewm(span=50, adjust=False).mean()
+    e100 = prices.ewm(span=100, adjust=False).mean()
+    e200 = prices.ewm(span=200, adjust=False).mean()
     macd = prices.ewm(span=12, adjust=False).mean() - prices.ewm(span=26, adjust=False).mean()
-    C = ((prices > e200) & (e10 > e50) & (e50 > e200) & (macd > 0)).values
-    if setclose is not None:
+
+    if use_hh_hl:
+        # pattern-based ไม่ vectorize ได้ตรงๆ ต้องคำนวณทีละหุ้น
+        sig = pd.DataFrame(False, index=prices.index, columns=prices.columns)
+        for col in prices.columns:
+            s = prices[col].dropna()
+            if len(s) < 60:
+                continue
+            signal, _ = find_hh_hl_breakout_signal(s)
+            sig.loc[s.index, col] = signal
+        stock_ok = sig & (prices > e200)
+    elif use_ema_cross:
+        cross_up = (e50 > e100) & (e50.shift(1) <= e100.shift(1))
+        stock_ok = (prices > e200) & (e10 > e50) & (macd > 0) & cross_up
+    elif use_ema_stack:
+        yr_high = prices.rolling(252, min_periods=60).max()
+        stock_ok = (prices > e5) & (e5 > e10) & (e10 > e30) & (e30 > e50) & (e50 > e100) & (e100 > e200) & (prices >= yr_high)
+    else:
+        stock_ok = (prices > e200) & (e10 > e50) & (e50 > e200) & (macd > 0)
+
+    if setclose is not None and not use_hh_hl and not use_ema_stack:
         s = setclose.reindex(prices.index).ffill()
         setmask = ((s > ema(s, 200)) & (ema(s, 10) > ema(s, 50)) & (ema(s, 50) > ema(s, 200))).values
-        C = C & setmask[:, None]
+        C = stock_ok.values & setmask[:, None]
+    else:
+        C = stock_ok.values
 
-    P = prices.values; E50 = e50.values; SC = (macd / prices).values
+    P = prices.values; E5 = e5.values; E30 = e30.values; E50 = e50.values; SC = (macd / prices).values
     T, M = P.shape; cols = list(prices.columns); idx = prices.index
 
     cash, pos = 1.0, {}
@@ -492,11 +519,28 @@ def simulate_portfolio(closes, setclose, fee, n_slots):
             p = P[i, j]
             if np.isnan(p):
                 continue
-            if p <= pos[j]["entry"] * (1 - CUT) or (not np.isnan(E50[i, j]) and p < E50[i, j]):
+            chg = p / pos[j]["entry"] - 1
+            reason = None
+            if chg <= -CUT:
+                reason = "SL -8%"
+            elif use_ema30_50_tp15_exit:
+                if chg >= 0.15:
+                    reason = "TP +15%"
+                elif not np.isnan(E30[i, j]) and not np.isnan(E50[i, j]) and E30[i, j] < E50[i, j]:
+                    reason = "EMA30<EMA50"
+            elif use_ema30_50_exit:
+                if not np.isnan(E30[i, j]) and not np.isnan(E50[i, j]) and E30[i, j] < E50[i, j]:
+                    reason = "EMA30<EMA50"
+            elif use_ema5_trail:
+                if not np.isnan(E5[i, j]) and p < E5[i, j]:
+                    reason = "ตัด EMA5"
+            else:
+                if not np.isnan(E50[i, j]) and p < E50[i, j]:
+                    reason = "หลุด EMA50"
+            if reason:
                 cash += pos[j]["val"] * (1 - fee)
                 trades.append(dict(sym=cols[j].replace(".BK", ""), ei=pos[j]["ei"], ep=pos[j]["entry"],
-                                   xi=i, xp=p, reason=("SL -8%" if p <= pos[j]["entry"]*(1-CUT) else "หลุด EMA50"),
-                                   pnl=p / pos[j]["entry"] - 1 - 2*fee))
+                                   xi=i, xp=p, reason=reason, pnl=chg - 2*fee))
                 del pos[j]
         free = n_slots - len(pos)                              # เติมช่องว่างด้วยตัวที่มีสัญญาณ
         if free > 0:
@@ -511,7 +555,7 @@ def simulate_portfolio(closes, setclose, fee, n_slots):
                 cash -= amt; pos[j] = dict(val=amt * (1 - fee), entry=P[i, j], ei=i)
         eqc.append(cash + sum(v["val"] for v in pos.values())); fill.append(len(pos))
 
-    for j, v in pos.items():                                   # ไม้ที่ยังถือตอนจบ
+    for j, v in pos.items():                                   # ไม้ที่ยังถืออยู่ตอนจบ
         trades.append(dict(sym=cols[j].replace(".BK", ""), ei=v["ei"], ep=v["entry"],
                            xi=None, xp=P[-1, j], reason="ยังถือ", pnl=P[-1, j] / v["entry"] - 1 - fee))
 
@@ -750,8 +794,12 @@ if mode == "สแกนทั้งกลุ่ม":
         else:
             closes_to_use = closes
 
+        if use_scaling:
+            st.info("ℹ️ กลยุทธ์ออก \"Scaling Out\" ขายบางส่วนไม่รองรับในโหมดพอร์ตหมุนเงิน "
+                    "(ไม่เข้ากับโมเดลช่องถือเต็ม-ว่าง) — ใช้ Default (Trail EMA50) แทนในโหมดนี้")
         with st.spinner("กำลังจำลองพอร์ต..."):
-            R = simulate_portfolio(closes_to_use, setclose, fee, n_slots)
+            R = simulate_portfolio(closes_to_use, setclose, fee, n_slots, use_scaling, use_ema_cross, use_hh_hl,
+                                   use_ema5_trail, use_ema_stack, use_ema30_50_exit, use_ema30_50_tp15_exit)
         eq = R["eq"]; yrs = len(eq) / 252
         total = eq.iloc[-1] - 1; bh = R["bh"].iloc[-1] - 1
         cagr = eq.iloc[-1] ** (1 / yrs) - 1 if yrs > 0 else 0
