@@ -22,6 +22,69 @@ st.set_page_config(page_title="Thai Trade Bot — Backtest", page_icon="🤖", l
 st.title("🤖 Thai Trade Bot — Backtest")
 st.caption("ทดสอบกลยุทธ์บนข้อมูลอดีต · เทียบ Buy & Hold · เพื่อการเรียนรู้ ไม่ใช่คำแนะนำลงทุน")
 
+RESEARCH_LOG_MD = """
+## 📋 สรุปผลการทดลอง Win Rate 60%+ (อัปเดตล่าสุด)
+
+กติกาทุกการทดลอง: แบ่งข้อมูลราคาแต่ละหุ้นเป็น **TRAIN (60%) / VALID (20%) / TEST (20%)** ตามเวลา
+(ห้ามดู TEST ก่อนล็อกเงื่อนไข), รายงาน**ทุก combo** ที่ลอง ไม่ใช่แค่ตัวที่ผ่าน (กัน survivorship/p-hacking)
+เกณฑ์ผ่าน: valid win rate ≥55%, test win rate ≥52%, กำไรเฉลี่ยต่อไม้เป็นบวกทั้งคู่, ไม้ ≥40 ต่อช่วง
+
+---
+
+### 🥇 อันดับ 1 — Volume Profile "POC Pullback Bounce" (หุ้น US เท่านั้น)
+ราคาย่อกลับมาแตะ **POC** (จุดราคาที่มี volume ซื้อขายมากสุดใน 60 วันย้อนหลัง) จากด้านบนแล้วเด้งขึ้น
+ในเทรนด์ขึ้น (close>EMA200) — เข้าซื้อ, TP 5% / SL 10%
+
+| ชุดข้อมูล | Train | Valid | Test | n(test) |
+|---|---|---|---|---|
+| US 76 หุ้น เต็ม | 74.5% | 69.3% | **69.8%** | 318 |
+
+✅ เสถียรที่สุดในบรรดาทุกระบบที่เทส (ช่องว่าง valid→test แค่ 0.5%)
+❌ หุ้นไทย: 0/48 combo ผ่าน (win rate สูงแต่กำไรเฉลี่ยติดลบ — ไม่ใช่ edge จริง)
+
+### 🥈 อันดับ 2 — RVI + MACD(100,200,50) (หุ้น US เท่านั้น)
+ที่มา: คลิป YouTube "ถ้าให้เลือกแค่ 2 อินดิเคเตอร์..." — RVI (Relative Vigor Index) ตัด Signal Line ขึ้น
+หลังเคยต่ำกว่า -0.22, ยืนยันด้วย MACD trend filter แบบช้ามาก (100,200,50) — TP 5% / SL 10%
+
+| ชุดข้อมูล | Train | Valid | Test | n(test) |
+|---|---|---|---|---|
+| US 76 หุ้น เต็ม | 71.8% | 71.2% | **66.9%** | 344 |
+
+❌ หุ้นไทย: 0/36 combo ผ่าน
+
+### 🥉 อันดับ 3 — Trend Ribbon + Hull Suite + SuperTrend (หุ้น US เท่านั้น)
+ที่มา: คลิป YouTube "อินดิเคเตอร์นี้ใช้เป็นตัวหลักได้เลย" — Donchian Ribbon(30) + Hull Suite(60, mult 3)
++ SuperTrend(ATR period 50, mult 7.0) ต้องเขียวพร้อมกันทั้ง 3 ตัว — TP 8% / SL 10%
+
+| ชุดข้อมูล | Train | Valid | Test | n(test) |
+|---|---|---|---|---|
+| US 76 หุ้น เต็ม | 68.1% | 60.4% | **56.2%** | 386 |
+
+---
+
+### ❌ ทดลองแล้วไม่ผ่าน / ไม่มี edge จริง
+
+- **RSI Bullish Divergence + EMA12x26 cross** (คลิป "5 อินดิเคเตอร์ยอดฮิต"): ไม่ผ่านเกณฑ์ทั้งไทยและ US
+  (valid/test กระโดดไปมาไม่เสถียร)
+- **FVMR Framework** (Fundamentals/Valuation/Momentum/Revisions แบบ UOB Kay Hian): Top tercile win rate
+  60.3% vs Bottom tercile 56.6% — ใกล้เคียง baseline เฉลี่ยทั้งชุด (59.5%) เกินไป ไม่ถือว่ามี edge
+  (มีข้อจำกัด: F/V/R ใช้ข้อมูลปัจจุบัน คงที่ตลอด 10 ปีเพราะ yfinance ฟรีไม่มี point-in-time history)
+- **COMBO: Volume Profile + RVI/MACD ต้องตรงกันวันเดียว**: แย่กว่าแยกใช้เดี่ยวๆ ชัดเจน (test win rate
+  ร่วงเหลือ 53.8%, n เหลือแค่ 12-13 ไม้ต่อช่วง — สัญญาณเกิดยากเกินไปจนวัดผลไม่ได้)
+- **จำนวนข่าว (GDELT) ก่อนเข้าไม้ POC Pullback**: ไม้ชนะ (n=57) news count เฉลี่ย 5,197 vs ไม้แพ้ (n=14)
+  เฉลี่ย 5,427 — ไม่ต่างกันอย่างมีนัยสำคัญ จำนวนข่าวไม่ช่วยกรองสัญญาณ
+- **โทนข่าว (บวก/ลบ) ก่อนเข้าไม้**: กำลังทดสอบ (ผลจะอัปเดตในสรุปนี้เมื่อเสร็จ)
+
+### 📂 ไฟล์ผลการทดลองดิบ (อยู่ใน repo)
+`volprofile_us_all_combos.csv` · `yt_indicators_us_all_combos.csv` ·
+`combo_volprofile_rvimacd_us_all_combos.csv` · `fvmr_us_snapshots.csv` ·
+`news_volume_vs_winloss.csv` · `news_tone_vs_winloss.csv`
+
+### 🎯 สรุปเชิงปฏิบัติ
+ถ้าจะเลือกใช้ระบบเดียวสำหรับหุ้น US: **Volume Profile POC Pullback Bounce (TP5%/SL10%)** คือตัวที่ผ่าน
+เกณฑ์เข้มงวดที่สุดและเสถียรที่สุด — ยังไม่พบระบบไหนที่ใช้ได้ผลจริงกับหุ้นไทยเลยในทุกการทดลองที่ผ่านมา
+"""
+
 SET_SYMBOL = "^SET.BK"
 CUT = 0.08   # initial stop loss (กว้างขึ้น กัน noise) · หลังมีกำไรใช้ trailing EMA50
 
@@ -613,7 +676,8 @@ with st.sidebar:
     # ที่ค้างโหมด "สแกนทั้งกลุ่ม" จาก session cookie เดียวกัน แต่แท็บนี้เป็น deep link ที่ต้องใช้ symbol)
     symbol = sym_q if is_deep_link else "PIMO.BK"
     group = None  # ตั้งไว้ก่อนกัน NameError ตอน mode == "หุ้นเดียว" (group ไม่ถูกตั้งค่าในโหมดนั้น)
-    mode = st.radio("โหมด", ["หุ้นเดียว", "สแกนทั้งกลุ่ม", "คัดหุ้นถือยาว (Fundamental)"])
+    mode = st.radio("โหมด", ["หุ้นเดียว", "สแกนทั้งกลุ่ม", "คัดหุ้นถือยาว (Fundamental)",
+                             "📋 สรุปผลการทดลอง (Research Log)"])
     if mode == "หุ้นเดียว":
         symbol = st.text_input("หุ้น (เช่น PIMO.BK)", symbol).strip().upper()
     elif mode == "สแกนทั้งกลุ่ม":
@@ -625,7 +689,7 @@ with st.sidebar:
         if scan_style.startswith("จัดพอร์ต"):
             n_slots = st.radio("ถือพร้อมกันกี่ตัว", [1, 5], horizontal=True,
                                format_func=lambda x: f"{x} ไม้")
-    else:  # คัดหุ้นถือยาว
+    elif mode == "คัดหุ้นถือยาว (Fundamental)":
         group = st.selectbox("กลุ่ม", ["SET100 (ทั้งหมด)", "US100 (หุ้นอเมริกาจริง)", "DR หุ้นอเมริกา (มีใน SET)",
                                        "DR หุ้นต่างชาติอื่นๆ (ไม่ใช่อเมริกา)"] + list(SECTORS.keys()), key="screener_group")
     years = st.slider("ปีย้อนหลัง", 1, 10, years_q if is_deep_link else 5)
@@ -733,6 +797,10 @@ with st.sidebar:
     use_fundamental = len(fundamental_criteria) > 0
 
     run = st.button("🚀 รัน Backtest", type="primary", use_container_width=True)
+
+if mode == "📋 สรุปผลการทดลอง (Research Log)":
+    st.markdown(RESEARCH_LOG_MD)
+    st.stop()
 
 # ══════════ เปิดจากลิงก์แท็บใหม่ (ดูกราฟหุ้นเดียว จากผลสแกน) ══════════
 # sidebar ด้านบนตั้งค่าเริ่มต้นตามลิงก์ให้แล้ว จากนี้ใช้ค่า "สด" จาก sidebar เสมอ
