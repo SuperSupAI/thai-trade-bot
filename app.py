@@ -29,9 +29,18 @@ RESEARCH_LOG_MD = """
 (ห้ามดู TEST ก่อนล็อกเงื่อนไข), รายงาน**ทุก combo** ที่ลอง ไม่ใช่แค่ตัวที่ผ่าน (กัน survivorship/p-hacking)
 เกณฑ์ผ่าน: valid win rate ≥55%, test win rate ≥52%, กำไรเฉลี่ยต่อไม้เป็นบวกทั้งคู่, ไม้ ≥40 ต่อช่วง
 
+### 📅 ไทม์ไลน์การทดลอง (วันไหนเทสอะไรบ้าง)
+
+- **13 ก.ค. 2026** — ชุดการทดลอง `webull_bot` ทั้งหมด: position sizing factorial, grid search 690 คอมโบ,
+  bear-market stress test (2020 COVID / 2022 Fed hiking), sideways-stock test (KER) → เปลี่ยนสูตร
+  `webull_bot/strategy.py` เป็น Trend+MACD + TP12%/SL15% และเพิ่มตัวเลือก "Quick TP/SL" ในแอปนี้
+  (ดูหัวข้อ 🆕 ด้านล่าง) พร้อมต่อ `webull_bot` เข้ากับ SDK ทางการของ Webull
+- **12 ก.ค. 2026** — ชุดการทดลองเดิมทั้งหมดด้านล่าง: Volume Profile POC Pullback Bounce, RVI+MACD,
+  Trend Ribbon+Hull+SuperTrend, FVMR Framework, ความสัมพันธ์จำนวน/โทนข่าวกับผลเทรด
+
 ---
 
-### 🆕 การทดลอง webull_bot — หา combo ที่ "ไม่หายนะ" ไม่ใช่แค่กำไรสูงสุด
+### 🆕 การทดลอง webull_bot (13 ก.ค. 2026) — หา combo ที่ "ไม่หายนะ" ไม่ใช่แค่กำไรสูงสุด
 
 ทดลองต่อยอดจากบอทเทรดหุ้น US จริง (`webull_bot/`) เริ่มจากสูตรเดิม EMA Stack+NewHigh / TP5%+SL10%
 แล้วหาสูตรที่ดีกว่าผ่าน 4 การทดลองต่อเนื่อง (โค้ดอยู่ที่ `test_sizing_rules_experiment.py`,
@@ -55,6 +64,8 @@ RESEARCH_LOG_MD = """
 ถ้าไม่มี hard stop-loss ตายตัว — ต้องทดสอบทั้งตลาดขาขึ้นและขาลงจริงก่อนเชื่อผลเสมอ
 
 ---
+
+### 📚 ผลการทดลองชุดแรก (12 ก.ค. 2026)
 
 ### 🥇 อันดับ 1 — Volume Profile "POC Pullback Bounce" (หุ้น US เท่านั้น)
 ราคาย่อกลับมาแตะ **POC** (จุดราคาที่มี volume ซื้อขายมากสุดใน 60 วันย้อนหลัง) จากด้านบนแล้วเด้งขึ้น

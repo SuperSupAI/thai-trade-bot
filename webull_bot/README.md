@@ -49,7 +49,7 @@ python bot.py
 Action ให้รัน `python bot.py` วันละครั้งหลังตลาด US ปิด (~21:00 น. เวลาไทย ช่วงเวลาปกติ,
 เปลี่ยนเป็น 20:00 ช่วง daylight saving)
 
-## สถานะปัจจุบัน (อัปเดตหลังตรวจกับเอกสารทางการแล้ว)
+## สถานะปัจจุบัน (อัปเดต 13 ก.ค. 2026 — ต่อ SDK ทางการ + เปลี่ยนสูตรหลัง bear-market stress test)
 
 - ✅ `webull_client.py` เปลี่ยนไปใช้ **SDK ทางการของ Webull** (`webull-openapi-python-sdk`)
   แทนการเขียน HTTP + HMAC signing เอง — endpoint (`api.webull.co.th` / `th-api.uat.webullbroker.com`),
