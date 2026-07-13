@@ -26,3 +26,9 @@ webull_bot/.env
 # SDK ทางการเก็บ 2FA access token ไว้ที่นี่ (default) — เป็น credential ที่ใช้งานได้จริง ห้ามขึ้น repo
 webull_bot/conf/
 webull_bot/*.log
+
+# ผลลัพธ์การรัน test_*.py / backtest_*.py แบบ ad-hoc — reproducible ได้จากสคริปต์เอง ไม่ต้องขึ้น repo
+*_output.txt
+*_output_*.txt
+webull_bot/backtest_output*.txt
+*.pkl

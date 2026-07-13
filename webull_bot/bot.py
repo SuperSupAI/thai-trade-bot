@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 """
-บอทสแกน US100 ทุกวันหลังตลาดปิด ใช้สัญญาณ EMA Stack+NewHigh (เข้า) / Quick TP5%+SL10% (ออก)
+บอทสแกน US100 ทุกวันหลังตลาดปิด ใช้สัญญาณ Trend+MACD (เข้า) / TP12%+SL15% (ออก)
 
 ความปลอดภัย (สำคัญมาก อ่านก่อนรัน):
   - ค่าเริ่มต้น LIVE_TRADING=false → แค่ "log" ว่าจะซื้อ/ขายอะไร ไม่ส่งคำสั่งจริงเด็ดขาด
@@ -96,10 +96,12 @@ def run():
             # circuit breaker: หยุดเปิดไม้ใหม่ถ้าถือเต็มโควตา หรือเปิดไปแล้วครบโควตาของรอบนี้
             if len(positions) >= MAX_OPEN_POSITIONS or new_entries_this_run >= MAX_NEW_ENTRIES_PER_RUN:
                 continue
+            # TODO: ยังไม่กรองหุ้น sideway/choppy ออกก่อนสแกน (ดู README — "ยังไม่กรองหุ้น sideway
+            # ออกจาก universe ก่อนสแกน") — สูตรนี้ขาดทุนบนหุ้น sideway ทดสอบแล้ว
             sig = entry_signal(close)
             if bool(sig.iloc[-1]):
                 qty = max(1, int(POSITION_SIZE_USD / price_today))  # position sizing แบบเงินคงที่ต่อไม้
-                actions.append(dict(action="BUY", symbol=sym, price=price_today, reason="EMA Stack+NewHigh"))
+                actions.append(dict(action="BUY", symbol=sym, price=price_today, reason="Trend+MACD"))
                 if live and client:
                     client.place_order(sym, "BUY", qty)
                 positions[sym] = dict(entry_price=price_today, qty=qty,
