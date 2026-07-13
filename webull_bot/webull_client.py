@@ -1,27 +1,31 @@
 """
-Client เชื่อมต่อ Webull OpenAPI (Thailand) — https://developer.webull.co.th/apis/docs/
+Client เชื่อมต่อ Webull OpenAPI (Thailand) ผ่าน SDK ทางการ (webull-openapi-python-sdk)
+https://github.com/webull-inc/webull-openapi-python-sdk
 
-ทุก request ต้องเซ็นด้วย HMAC-SHA256 จาก App Secret ตามที่เอกสารกำหนด:
-  - x-app-key, x-timestamp, x-signature, x-signature-algorithm,
-    x-signature-version, x-signature-nonce, x-version, x-access-token
+ใช้ SDK ทางการแทนการเขียน HTTP request + HMAC signing เอง เพราะ:
+  - SDK จัดการ signing (HMAC-SHA1 ตามสเปกจริงจาก docs — ไม่ใช่ SHA256 ที่เคยเดาไว้ผิด) ให้อัตโนมัติ
+  - SDK จัดการขั้นตอน 2FA ครั้งแรก (ต้องยืนยันผ่านแอป Webull) + เก็บ token ให้เอง
+    (ค่า default เก็บที่ webull_bot/conf/token.txt — ปรับ path ได้ด้วย WEBULL_TOKEN_DIR)
+
+Environment (สำคัญ — "sandbox" ในที่นี่คือ Webull UAT/test environment จริงๆ ไม่ใช่คำที่ Webull
+ใช้เอง แต่ทำหน้าที่เดียวกัน — endpoint คนละตัวกับ production เห็นชัดว่าไม่ใช่เงินจริงแน่นอน):
+  - sandbox/test  → th-api.uat.webullbroker.com  (มี "shared test accounts" สาธารณะให้ใช้ทดสอบ
+                     ได้ทันทีโดยไม่ต้องรออนุมัติ App Key ของตัวเอง — ดู .env.example)
+  - production    → api.webull.co.th             (เงินจริง — ใช้เมื่อพร้อมจริงๆ เท่านั้น)
 
 หมายเหตุความปลอดภัย: ไฟล์นี้ไม่มีค่า API key/secret จริงฝังอยู่เลย — อ่านจาก
 environment variables (.env ที่ผู้ใช้สร้างเอง, ไม่ถูก commit ขึ้น git) เท่านั้น
 """
-import base64
-import hashlib
-import hmac
 import os
-import time
 import uuid
 
-import requests
 from dotenv import load_dotenv
 
 load_dotenv()
 
-SANDBOX_BASE_URL = "https://api.sandbox.webull.co.th"   # โหมดทดสอบ (เงินปลอม) — ใช้ก่อนเสมอ
-PRODUCTION_BASE_URL = "https://api.webull.co.th"         # เงินจริง — ใช้เมื่อพร้อมจริงๆ เท่านั้น
+REGION_ID = "th"
+TEST_ENDPOINT = "th-api.uat.webullbroker.com"
+PRODUCTION_ENDPOINT = "api.webull.co.th"
 
 
 class WebullConfigError(Exception):
@@ -36,53 +40,87 @@ class WebullClient:
         if not self.app_key or not self.app_secret or "your_app" in self.app_key:
             raise WebullConfigError(
                 "ยังไม่ได้ตั้งค่า WEBULL_APP_KEY / WEBULL_APP_SECRET ใน webull_bot/.env "
-                "(คัดลอกจาก .env.example แล้วใส่ค่าจริงจาก Webull OpenAPI Management)"
+                "(คัดลอกจาก .env.example แล้วใส่ค่าจริงจาก Webull OpenAPI Management "
+                "หรือใช้ shared test account ที่ให้ไว้ใน .env.example เพื่อทดสอบก่อนได้)"
             )
-        self.base_url = SANDBOX_BASE_URL if env == "sandbox" else PRODUCTION_BASE_URL
         self.env = env
-        self.access_token = None  # ได้จากขั้นตอน 2FA ครั้งแรก (ยังไม่ implement ในไฟล์นี้)
+        self.endpoint = TEST_ENDPOINT if env == "sandbox" else PRODUCTION_ENDPOINT
 
-    def _sign(self, body: str, timestamp: str, nonce: str) -> str:
-        """HMAC-SHA256 ตามสเปกของ Webull OpenAPI"""
-        payload = f"{self.app_key}{timestamp}{nonce}{body}".encode("utf-8")
-        digest = hmac.new(self.app_secret.encode("utf-8"), payload, hashlib.sha256).digest()
-        return base64.b64encode(digest).decode("utf-8")
+        # import ตอน init เท่านั้น (ไม่ import ตอน module load) กันพังทั้งไฟล์ถ้ายังไม่ได้ pip install SDK
+        from webull.core.client import ApiClient
+        from webull.trade.trade_client import TradeClient
 
-    def _headers(self, body: str = "") -> dict:
-        timestamp = str(int(time.time() * 1000))
-        nonce = uuid.uuid4().hex
-        headers = {
-            "x-app-key": self.app_key,
-            "x-timestamp": timestamp,
-            "x-signature-nonce": nonce,
-            "x-signature": self._sign(body, timestamp, nonce),
-            "x-signature-algorithm": "HmacSHA256",
-            "x-signature-version": "1.0",
-            "x-version": "v2",
-            "Content-Type": "application/json",
-        }
-        if self.access_token:
-            headers["x-access-token"] = self.access_token
-        return headers
+        token_dir = os.environ.get("WEBULL_TOKEN_DIR")
+        api_client = ApiClient(self.app_key, self.app_secret, REGION_ID)
+        api_client.add_endpoint(REGION_ID, self.endpoint)
+        if token_dir:
+            api_client.set_token_dir(token_dir)
 
-    def request(self, method: str, path: str, body: dict | None = None) -> dict:
-        import json
-        body_str = json.dumps(body, separators=(",", ":")) if body else ""
-        resp = requests.request(
-            method, f"{self.base_url}{path}",
-            headers=self._headers(body_str),
-            data=body_str if body else None,
-            timeout=15,
-        )
-        resp.raise_for_status()
-        return resp.json()
+        self._trade = TradeClient(api_client)
+        self._account_id = os.environ.get("WEBULL_ACCOUNT_ID") or None
 
-    # ── ตัวอย่าง endpoint พื้นฐาน (ปรับ path ตามเอกสารจริงตอนสมัคร API key แล้ว) ──
-    def get_account(self) -> dict:
-        return self.request("GET", "/account/v1/summary")
+    def get_account_id(self) -> str:
+        """ดึง account_id อัตโนมัติจาก account list ถ้ายังไม่ได้ระบุ WEBULL_ACCOUNT_ID ไว้เอง
+        (รอบแรกที่เรียกจะเป็นจังหวะที่ต้องยืนยัน 2FA ผ่านแอป Webull ถ้ายังไม่เคยทำ)"""
+        if self._account_id:
+            return self._account_id
+        res = self._trade.account_v2.get_account_list()
+        res.raise_for_status()
+        body = res.json()
+        # get_account_list() คืน bare JSON array ของ account objects ตรงๆ (ยืนยันด้วยการยิงจริง
+        # กับ shared test account) — ไม่ได้ห่อด้วย {"accounts": [...]} หรือ {"data": [...]} แบบที่เดาไว้แต่แรก
+        accounts = body if isinstance(body, list) else (body.get("accounts") or body.get("data") or [])
+        if not accounts:
+            raise WebullConfigError("get_account_list() ไม่คืน account ใดเลย — เช็ค App Key/Secret ให้ตรงกับ env นี้")
+        self._account_id = accounts[0]["account_id"]
+        return self._account_id
 
-    def place_order(self, symbol: str, side: str, qty: int, order_type: str = "MARKET") -> dict:
+    def get_balance(self) -> dict:
+        res = self._trade.account_v2.get_account_balance(self.get_account_id())
+        res.raise_for_status()
+        return res.json()
+
+    def get_buying_power(self, currency: str = "USD") -> float | None:
+        """ดึง buying power (USD) จากบัญชี — คืน None ถ้าดึงไม่ได้ (ให้ผู้เรียก fallback เอง)"""
+        try:
+            data = self.get_balance()
+            for asset in data.get("account_currency_assets", []):
+                if asset.get("currency") == currency:
+                    return float(asset["buying_power"])
+        except Exception:
+            return None
+        return None
+
+    def preview_order(self, symbol: str, side: str, qty: int) -> dict:
+        """เช็คก่อนว่า order นี้ยิงได้จริงไหม (buying power พอ, symbol ถูกต้อง ฯลฯ) โดยไม่ส่งจริง
+        ทดสอบยิงจริงกับ shared test account แล้ว: order_v3.preview_order(...) ทำงานถูกต้อง
+        (คืน estimated_cost/estimated_transaction_fee) — เก็บ fallback ไป order_v2 ไว้เผื่อ SDK
+        เวอร์ชันอื่นไม่มี preview_order ใน v3"""
+        order = self._build_market_order(symbol, side, qty)
+        order_client = self._trade.order_v3 if hasattr(self._trade.order_v3, "preview_order") else self._trade.order_v2
+        res = order_client.preview_order(self.get_account_id(), [order])
+        res.raise_for_status()
+        return res.json()
+
+    def place_order(self, symbol: str, side: str, qty: int) -> dict:
         """side: 'BUY' หรือ 'SELL' — เรียกเฉพาะตอน LIVE_TRADING=true เท่านั้น (เช็คใน bot.py ไม่ใช่ที่นี่)"""
-        return self.request("POST", "/trade/v1/order/place", {
-            "symbol": symbol, "side": side, "quantity": qty, "orderType": order_type,
-        })
+        order = self._build_market_order(symbol, side, qty)
+        res = self._trade.order_v3.place_order(self.get_account_id(), [order])
+        res.raise_for_status()
+        return res.json()
+
+    @staticmethod
+    def _build_market_order(symbol: str, side: str, qty: int) -> dict:
+        return {
+            "combo_type": "NORMAL",
+            "client_order_id": uuid.uuid4().hex,
+            "symbol": symbol,
+            "instrument_type": "EQUITY",
+            "market": "US",
+            "order_type": "MARKET",
+            "entrust_type": "QTY",
+            "quantity": str(qty),
+            "support_trading_session": "CORE",
+            "side": side,
+            "time_in_force": "DAY",
+        }

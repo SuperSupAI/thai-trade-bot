@@ -23,3 +23,6 @@ set-archive_EOD_1970-LAST.zip
 # webull_bot — สถานะการถือครองจริง/paper trading ของแต่ละคน ไม่ควรขึ้น repo ส่วนกลาง
 webull_bot/state.json
 webull_bot/.env
+# SDK ทางการเก็บ 2FA access token ไว้ที่นี่ (default) — เป็น credential ที่ใช้งานได้จริง ห้ามขึ้น repo
+webull_bot/conf/
+webull_bot/*.log

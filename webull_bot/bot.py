@@ -5,7 +5,11 @@
 ความปลอดภัย (สำคัญมาก อ่านก่อนรัน):
   - ค่าเริ่มต้น LIVE_TRADING=false → แค่ "log" ว่าจะซื้อ/ขายอะไร ไม่ส่งคำสั่งจริงเด็ดขาด
   - ต้องตั้ง LIVE_TRADING=true ใน webull_bot/.env ด้วยตัวเองเท่านั้นถึงจะเริ่มส่งคำสั่งจริง
-  - WEBULL_ENV=sandbox (ค่าเริ่มต้น) = เงินปลอม ไม่กระทบเงินจริง — ทดสอบตรงนี้ให้มั่นใจก่อนเสมอ
+  - WEBULL_ENV=sandbox (ค่าเริ่มต้น) = ต่อ Webull test/UAT environment (th-api.uat.webullbroker.com)
+    คนละ endpoint กับเงินจริงเด็ดขาด — ทดสอบตรงนี้ให้มั่นใจก่อนเสมอ (มี shared test account
+    ให้ใช้ทันทีใน .env.example ไม่ต้องรอ App Key ตัวเองอนุมัติก็ทดสอบได้)
+  - Position sizing + circuit breaker ปรับได้ผ่าน .env: POSITION_SIZE_USD (เงินต่อไม้),
+    MAX_OPEN_POSITIONS (ถือพร้อมกันสูงสุด), MAX_NEW_ENTRIES_PER_RUN (กันเปิดไม้รัวถ้ามีบั๊ก)
   - รันวันละครั้งพอ (สัญญาณคำนวณจากราคาปิดรายวัน EOD) ไม่ต้องเปิดเครื่องค้างทั้งวัน
     ใช้ cron / GitHub Action ตั้งเวลาหลังตลาด US ปิด (21:00 น. เวลาไทย ช่วงเวลาปกติ)
 
@@ -30,6 +34,11 @@ load_dotenv()
 
 STATE_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "state.json")
 YEARS_LOOKBACK = 2  # โหลด 2 ปี ให้ EMA200/New-High มีข้อมูล warm-up พอ
+
+# ── Position sizing + circuit breaker (ปรับได้ผ่าน .env) ──
+POSITION_SIZE_USD = float(os.environ.get("POSITION_SIZE_USD", "500"))       # เงินต่อไม้ใหม่ (ดอลลาร์)
+MAX_OPEN_POSITIONS = int(os.environ.get("MAX_OPEN_POSITIONS", "10"))        # ถือพร้อมกันได้สูงสุดกี่ตัว
+MAX_NEW_ENTRIES_PER_RUN = int(os.environ.get("MAX_NEW_ENTRIES_PER_RUN", "3"))  # กันบอทซื้อรัวถ้ามีบั๊ก
 
 
 def load_state() -> dict:
@@ -63,8 +72,11 @@ def run():
 
     print(f"เวลารัน (UTC): {datetime.now(timezone.utc).isoformat()}")
     print(f"สแกน {len(US_STOCKS)} หุ้น...")
+    print(f"Position sizing: ${POSITION_SIZE_USD:.0f}/ไม้ · ถือพร้อมกันสูงสุด {MAX_OPEN_POSITIONS} ตัว "
+          f"· เปิดไม้ใหม่ได้สูงสุด {MAX_NEW_ENTRIES_PER_RUN} ไม้/รอบ")
 
     actions = []
+    new_entries_this_run = 0
     for sym in US_STOCKS:
         close = safe_download_one(sym, YEARS_LOOKBACK)
         if close is None or len(close) < 260:
@@ -81,14 +93,18 @@ def run():
                     client.place_order(sym, "SELL", positions[sym]["qty"])
                 del positions[sym]
         else:
+            # circuit breaker: หยุดเปิดไม้ใหม่ถ้าถือเต็มโควตา หรือเปิดไปแล้วครบโควตาของรอบนี้
+            if len(positions) >= MAX_OPEN_POSITIONS or new_entries_this_run >= MAX_NEW_ENTRIES_PER_RUN:
+                continue
             sig = entry_signal(close)
             if bool(sig.iloc[-1]):
-                qty = 1  # ปรับ position sizing เองตามเงินทุน/ความเสี่ยงที่รับได้
+                qty = max(1, int(POSITION_SIZE_USD / price_today))  # position sizing แบบเงินคงที่ต่อไม้
                 actions.append(dict(action="BUY", symbol=sym, price=price_today, reason="EMA Stack+NewHigh"))
                 if live and client:
                     client.place_order(sym, "BUY", qty)
                 positions[sym] = dict(entry_price=price_today, qty=qty,
                                       entry_date=datetime.now(timezone.utc).date().isoformat())
+                new_entries_this_run += 1
 
     if not actions:
         print("วันนี้ไม่มีสัญญาณเข้า/ออก")

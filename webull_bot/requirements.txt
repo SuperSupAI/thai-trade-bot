@@ -1,4 +1,4 @@
-requests
+webull-openapi-python-sdk
 python-dotenv
 pandas
 numpy
