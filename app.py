@@ -31,6 +31,31 @@ RESEARCH_LOG_MD = """
 
 ---
 
+### 🆕 การทดลอง webull_bot — หา combo ที่ "ไม่หายนะ" ไม่ใช่แค่กำไรสูงสุด
+
+ทดลองต่อยอดจากบอทเทรดหุ้น US จริง (`webull_bot/`) เริ่มจากสูตรเดิม EMA Stack+NewHigh / TP5%+SL10%
+แล้วหาสูตรที่ดีกว่าผ่าน 4 การทดลองต่อเนื่อง (โค้ดอยู่ที่ `test_sizing_rules_experiment.py`,
+`test_exit_optimization.py`, `test_exit_optimization_bearcheck.py`, `test_exit_optimization_crashcheck.py`,
+`test_sideways_stocks.py`):
+
+1. **Position sizing สำคัญพอๆ กับเงื่อนไขเข้า/ออก** — ทดลอง 4×3×2 (จำนวนไม้ × entry × ทุน) พบว่า
+   "แชมป์" ของแต่ละปีสลับขั้วกันเอง ถ้าเลือกจากปีเดียวจะโดน overfit
+2. **Grid search 690 คอมโบ** (3 entry × 46 exit × 5 ระดับจำนวนไม้) แยก TRAIN/TEST ปีต่างกัน — ผู้ชนะ
+   อันดับ 1 ตอนแรก (Trend+MACD + trailing EMA100 ไม่มี SL ตายตัว) ดูดีมากบนตลาดขาขึ้นทั้ง 2 ปีที่ทดสอบ
+3. **เช็คกับตลาดหมีจริง (2020 COVID crash, 2022 Fed hiking bear -16.0%)** — ผู้ชนะเดิม "แตก" ทันที
+   (-8.0% ปี 2022, MaxDD -18.4%) เพราะ trailing ไม่มีเพดานขาดทุน ส่วน**อันดับ 2 เดิม (Trend+MACD entry
+   + TP12%/SL15% ตายตัว)** กลับเป็นสูตรเดียวในกลุ่มที่**ยังกำไรได้จริงตอนตลาดหมี** (+4.7% ขณะ B&H -16.0%)
+   → **นี่คือสูตรที่ `webull_bot/strategy.py` ใช้อยู่ตอนนี้** และเป็นตัวเลือก **"Quick TP/SL"** ในแอปนี้
+   (ปรับ default เป็น TP12%/SL15% แล้ว)
+4. **หุ้น sideway ทำให้สูตรนี้ขาดทุน** — ทดสอบด้วย Kaufman Efficiency Ratio (วัดว่าราคาวิ่งตรงทางเดียว
+   แค่ไหน) พบว่าหุ้น sideway 15 ตัว (KER ต่ำ) ขาดทุน -6.6% ขณะหุ้นเทรนด์แข็งแรง 15 ตัวกำไร +48.6%
+   ในช่วงเวลาเดียวกัน — **ยังไม่ implement ตัวกรอง sideway ใน bot จริง** (โน้ตไว้เป็น TODO)
+
+**บทเรียนสำคัญ:** สูตรที่ดูดีที่สุดบนข้อมูล backtest (แม้ทำ train/test แยกถูกต้องแล้ว) อาจยังไม่ทนตลาดหมี
+ถ้าไม่มี hard stop-loss ตายตัว — ต้องทดสอบทั้งตลาดขาขึ้นและขาลงจริงก่อนเชื่อผลเสมอ
+
+---
+
 ### 🥇 อันดับ 1 — Volume Profile "POC Pullback Bounce" (หุ้น US เท่านั้น)
 ราคาย่อกลับมาแตะ **POC** (จุดราคาที่มี volume ซื้อขายมากสุดใน 60 วันย้อนหลัง) จากด้านบนแล้วเด้งขึ้น
 ในเทรนด์ขึ้น (close>EMA200) — เข้าซื้อ, TP 5% / SL 10%
@@ -232,7 +257,8 @@ def find_hh_hl_breakout_signal(close, lookback=3, low_tolerance=0.05, monitor_da
 
 
 def build_and_sim(close, setclose, fee, use_scaling=False, use_ema_cross=False, use_hh_hl=False, use_ema5_trail=False,
-                   use_ema_stack=False, use_ema30_50_exit=False, use_ema30_50_tp15_exit=False, use_tp5_sl10_exit=False):
+                   use_ema_stack=False, use_ema30_50_exit=False, use_ema30_50_tp15_exit=False, use_tp5_sl10_exit=False,
+                   tp_pct=0.05, sl_pct=0.10):
     df = pd.DataFrame({"close": close})
     df["ema5"] = ema(close, 5); df["ema10"] = ema(close, 10); df["ema30"] = ema(close, 30); df["ema50"] = ema(close, 50)
     df["ema100"] = ema(close, 100); df["ema200"] = ema(close, 200)
@@ -297,7 +323,7 @@ def build_and_sim(close, setclose, fee, use_scaling=False, use_ema_cross=False, 
             # 60-80% สม่ำเสมอทั้ง 3 ช่วง (ไม่ค่อยเวิร์คกับหุ้นไทยเท่าไหร่ — win rate สูงเพราะ TP แคบ
             # ไม่ใช่เพราะทำนายทิศทางแม่นขึ้น กำไรรวมจะน้อยกว่าถือยาวเฉยๆ)
             if use_tp5_sl10_exit:
-                reason = "SL -10%" if chg <= -0.10 else ("TP +5%" if chg >= 0.05 else None)
+                reason = f"SL -{sl_pct*100:.0f}%" if chg <= -sl_pct else (f"TP +{tp_pct*100:.0f}%" if chg >= tp_pct else None)
                 if reason:
                     ft += fee; held = 0
                     trades.append({**entry, "exit_i": i, "exit_price": price, "reason": reason,
@@ -409,9 +435,10 @@ def build_and_sim(close, setclose, fee, use_scaling=False, use_ema_cross=False, 
 
 
 def show_stock_detail(symbol, close, setclose, fee, cap, use_scaling=False, use_ema_cross=False, use_hh_hl=False, use_ema5_trail=False, years=None,
-                       use_ema_stack=False, use_ema30_50_exit=False, use_ema30_50_tp15_exit=False, use_tp5_sl10_exit=False):
+                       use_ema_stack=False, use_ema30_50_exit=False, use_ema30_50_tp15_exit=False, use_tp5_sl10_exit=False,
+                       tp_pct=0.05, sl_pct=0.10):
     """แสดงรายละเอียดหุ้นตัวเดียว: เมตริก + กราฟจุดซื้อขาย + log"""
-    df, events, m = build_and_sim(close, setclose, fee, use_scaling, use_ema_cross, use_hh_hl, use_ema5_trail, use_ema_stack, use_ema30_50_exit, use_ema30_50_tp15_exit, use_tp5_sl10_exit)
+    df, events, m = build_and_sim(close, setclose, fee, use_scaling, use_ema_cross, use_hh_hl, use_ema5_trail, use_ema_stack, use_ema30_50_exit, use_ema30_50_tp15_exit, use_tp5_sl10_exit, tp_pct, sl_pct)
     eq = df["equity"]
     final_value = cap * eq.iloc[-1]; profit = final_value - cap
 
@@ -544,7 +571,7 @@ def show_stock_detail(symbol, close, setclose, fee, cap, use_scaling=False, use_
 
 def simulate_portfolio(closes, setclose, fee, n_slots, use_scaling=False, use_ema_cross=False, use_hh_hl=False,
                         use_ema5_trail=False, use_ema_stack=False, use_ema30_50_exit=False, use_ema30_50_tp15_exit=False,
-                        use_tp5_sl10_exit=False):
+                        use_tp5_sl10_exit=False, tp_pct=0.05, sl_pct=0.10):
     """พอร์ตหมุนเงิน: ถือได้ n_slots ตัวพร้อมกัน · ออกตัวนึง → เอาเงินไปเข้าตัวอื่นที่มีสัญญาณ (ไม่ถือเงินเฉย)
     ใช้เงื่อนไขเข้า/ออกเดียวกับที่เลือกในแถบข้าง (เหมือน build_and_sim) — ยกเว้น Scaling Out ที่ตกไปใช้
     Default (SL-8%/หลุด EMA50) แทน เพราะขายบางส่วนไม่เข้ากับโมเดล 'ช่อง' ที่ถือเต็ม-ว่างของโหมดนี้"""
@@ -598,10 +625,10 @@ def simulate_portfolio(closes, setclose, fee, n_slots, use_scaling=False, use_em
             chg = p / pos[j]["entry"] - 1
             reason = None
             if use_tp5_sl10_exit:
-                if chg <= -0.10:
-                    reason = "SL -10%"
-                elif chg >= 0.05:
-                    reason = "TP +5%"
+                if chg <= -sl_pct:
+                    reason = f"SL -{sl_pct*100:.0f}%"
+                elif chg >= tp_pct:
+                    reason = f"TP +{tp_pct*100:.0f}%"
             elif chg <= -CUT:
                 reason = "SL -8%"
             elif use_ema30_50_tp15_exit:
@@ -720,7 +747,7 @@ with st.sidebar:
     strategy = st.radio("เลือกกลยุทธ์",
                        ["Default (Trail EMA50)", "Scaling Out (10%→50%, 20%→50%)", "EMA5 Trail (ตัด EMA5 ขายหมด)",
                         "EMA30 ตัดลง EMA50 (ขายหมด)", "EMA30 ตัดลง EMA50 + Take Profit 15%",
-                        "Quick TP 5% + SL 10% (ไม่มี EMA)"],
+                        "Quick TP/SL (ไม่มี EMA)"],
                        index=exit_idx_q if is_deep_link else 0,
                        help="Scaling Out: ขาย50% ที่ 10%, ขาย50% ที่ 20%, ปล่อยไป -5%\n\n"
                             "EMA5 Trail: เงื่อนไขเดียวล้วนๆ ไม่ผสม scaling — ถือเต็มไม้ ขายหมดทันทีที่ราคาปิดต่ำกว่า EMA5 "
@@ -730,14 +757,22 @@ with st.sidebar:
                             "EMA30 ตัดลง EMA50 + TP15%: เหมือนอันข้างบน แต่ขายทำกำไรทันทีที่กำไรถึง +15% ด้วย "
                             "(ไม่ต้องรอ EMA30 หลุด) — ทดสอบด้วย train/test split แล้วช่วยเพิ่ม win rate จริง "
                             "(win rate ~32-40% เทียบสูตรเดิม ~20-28%)\n\n"
-                            "Quick TP5%+SL10%: ไม่มีเงื่อนไข EMA เลย ขายทำกำไรเร็วที่ +5% หรือตัดขาดทุนที่ -10% "
-                            "— ทดสอบด้วย train/valid/test split พบว่าได้ win rate 60-80% สม่ำเสมอ **บนหุ้น US** "
-                            "(ไม่ค่อยเวิร์คกับหุ้นไทย) แต่ผลตอบแทนรวมจะน้อยกว่าถือยาวเฉยๆ เพราะจำกัดกำไรแต่ละไม้ไว้แค่ +5%")
+                            "Quick TP/SL: ไม่มีเงื่อนไข EMA เลย ขายทำกำไรเร็วที่ TP% หรือตัดขาดทุนที่ SL% ตามที่ตั้งไว้ "
+                            "— ค่า default 12%/15% มาจากการทดลอง grid search 690 คอมโบ (webull_bot) ที่พบว่า "
+                            "เป็นสูตรเดียวที่ยังกำไรได้จริงตอนตลาดหมี 2022 (Fed hiking, +4.7% ขณะ B&H -16.0%) "
+                            "ต่างจาก TP5%/SL10% เดิมที่ win rate สูงแต่กำไรรวมน้อยกว่าถือยาวเฉยๆ")
     use_scaling = strategy == "Scaling Out (10%→50%, 20%→50%)"
     use_ema5_trail = strategy == "EMA5 Trail (ตัด EMA5 ขายหมด)"
     use_ema30_50_exit = strategy == "EMA30 ตัดลง EMA50 (ขายหมด)"
     use_ema30_50_tp15_exit = strategy == "EMA30 ตัดลง EMA50 + Take Profit 15%"
-    use_tp5_sl10_exit = strategy == "Quick TP 5% + SL 10% (ไม่มี EMA)"
+    tp_pct, sl_pct = 0.05, 0.10
+    if strategy == "Quick TP/SL (ไม่มี EMA)":
+        c_tp, c_sl = st.columns(2)
+        with c_tp:
+            tp_pct = st.number_input("TP %", 1.0, 50.0, 12.0, 1.0) / 100
+        with c_sl:
+            sl_pct = st.number_input("SL %", 1.0, 50.0, 15.0, 1.0) / 100
+    use_tp5_sl10_exit = strategy == "Quick TP/SL (ไม่มี EMA)"
 
     st.divider()
     fundamental_criteria = {}
@@ -833,7 +868,8 @@ else:
                   "**และ** SET `Close>EMA200` · `EMA10>EMA50` · `EMA50>EMA200`")
 
 if effective_tp5_sl10_exit:
-    exit_desc = "**Quick TP5%+SL10%**: ขาย `หมด` ทันทีที่กำไรถึง `+5%` หรือขาดทุนถึง `-10%` — ไม่มีเงื่อนไข EMA เลย"
+    exit_desc = (f"**Quick TP/SL**: ขาย `หมด` ทันทีที่กำไรถึง `+{tp_pct*100:.0f}%` หรือขาดทุนถึง `-{sl_pct*100:.0f}%` "
+                 "— ไม่มีเงื่อนไข EMA เลย")
 elif effective_ema30_50_tp15_exit:
     exit_desc = ("**EMA30 ตัดลง EMA50 + TP15%**: ขาย `หมด` ทันทีที่ `EMA30 < EMA50` **หรือ** กำไรถึง `+15%` "
                  "(หรือ Cut Loss `-8%` ก่อน) — ไม่มี scaling")
@@ -860,7 +896,7 @@ if is_deep_link:
     if close_q is None:
         st.error(f"ไม่มีข้อมูล {symbol}")
     else:
-        show_stock_detail(symbol, close_q, setclose_q, fee, cap, effective_scaling, effective_ema_cross, effective_hh_hl, effective_ema5_trail, int(years), effective_ema_stack, effective_ema30_50_exit, effective_ema30_50_tp15_exit, effective_tp5_sl10_exit)
+        show_stock_detail(symbol, close_q, setclose_q, fee, cap, effective_scaling, effective_ema_cross, effective_hh_hl, effective_ema5_trail, int(years), effective_ema_stack, effective_ema30_50_exit, effective_ema30_50_tp15_exit, effective_tp5_sl10_exit, tp_pct, sl_pct)
     st.stop()
 
 if not run:
@@ -982,7 +1018,7 @@ if mode == "สแกนทั้งกลุ่ม":
         with st.spinner("กำลังจำลองพอร์ต..."):
             R = simulate_portfolio(closes_to_use, setclose, fee, n_slots, use_scaling, use_ema_cross, use_hh_hl,
                                    use_ema5_trail, use_ema_stack, use_ema30_50_exit, use_ema30_50_tp15_exit,
-                                   use_tp5_sl10_exit)
+                                   use_tp5_sl10_exit, tp_pct, sl_pct)
         eq = R["eq"]; yrs = len(eq) / 252
         total = eq.iloc[-1] - 1; bh = R["bh"].iloc[-1] - 1
         cagr = eq.iloc[-1] ** (1 / yrs) - 1 if yrs > 0 else 0
@@ -1050,7 +1086,7 @@ if mode == "สแกนทั้งกลุ่ม":
                     prog.progress((k + 1) / len(items))
                     continue
 
-            _, _, m = build_and_sim(c, setclose, fee, use_scaling, use_ema_cross, use_hh_hl, use_ema5_trail, use_ema_stack, use_ema30_50_exit, use_ema30_50_tp15_exit, use_tp5_sl10_exit)
+            _, _, m = build_and_sim(c, setclose, fee, use_scaling, use_ema_cross, use_hh_hl, use_ema5_trail, use_ema_stack, use_ema30_50_exit, use_ema30_50_tp15_exit, use_tp5_sl10_exit, tp_pct, sl_pct)
             sym_clean = sym.replace(".BK", "")
             rows.append({
                 "หุ้น": sym_clean,
@@ -1140,5 +1176,5 @@ if mode == "สแกนทั้งกลุ่ม":
 close = load_one(symbol, int(years))
 if close is None:
     st.error(f"ไม่มีข้อมูล {symbol}"); st.stop()
-show_stock_detail(symbol, close, setclose, fee, cap, use_scaling, use_ema_cross, use_hh_hl, use_ema5_trail, int(years), use_ema_stack, use_ema30_50_exit, use_ema30_50_tp15_exit, use_tp5_sl10_exit)
+show_stock_detail(symbol, close, setclose, fee, cap, use_scaling, use_ema_cross, use_hh_hl, use_ema5_trail, int(years), use_ema_stack, use_ema30_50_exit, use_ema30_50_tp15_exit, use_tp5_sl10_exit, tp_pct, sl_pct)
 st.caption("⚠️ backtest ≠ ผลจริง · ลองหลายตัว/หลายช่วง กัน overfit · Sandbox ≤10%")
