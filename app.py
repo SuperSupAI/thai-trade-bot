@@ -44,7 +44,7 @@ st.markdown("""
 html, body, [class^="st-"], [class*=" st-"] { font-family: 'Sarabun', sans-serif; }
 
 [data-testid="stMain"], [data-testid="stAppViewContainer"] {
-  background: var(--paper) repeating-linear-gradient(to bottom, transparent, transparent 34px, var(--line) 34px, var(--line) 35px);
+  background: var(--paper);
 }
 
 [data-testid="stSidebar"] {
