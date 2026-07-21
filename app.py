@@ -1319,8 +1319,7 @@ with st.sidebar:
     # ที่ค้างโหมด "สแกนทั้งกลุ่ม" จาก session cookie เดียวกัน แต่แท็บนี้เป็น deep link ที่ต้องใช้ symbol)
     symbol = sym_q if is_deep_link else "PIMO.BK"
     group = None  # ตั้งไว้ก่อนกัน NameError ตอน mode == "หุ้นเดียว" (group ไม่ถูกตั้งค่าในโหมดนั้น)
-    mode = st.radio("โหมด", ["หุ้นเดียว", "สแกนทั้งกลุ่ม", "คัดหุ้นถือยาว (Fundamental)",
-                             "📋 สรุปผลการทดลอง (Research Log)", "🤖 DR Momentum Bot Monitor"])
+    mode = st.radio("โหมด", ["📋 สรุปผลการทดลอง (Research Log)", "🤖 DR Momentum Bot Monitor"])
     if mode == "หุ้นเดียว":
         symbol = st.text_input("หุ้น (เช่น PIMO.BK)", symbol).strip().upper()
     elif mode == "สแกนทั้งกลุ่ม":
