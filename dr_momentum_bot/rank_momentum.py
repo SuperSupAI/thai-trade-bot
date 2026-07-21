@@ -31,8 +31,8 @@ def rank_top_n(price_data, top_n=3):
     for ticker, close in price_data.items():
         if len(close) < FORMATION + SKIP:
             continue
-        p_now = float(close.iloc[-SKIP])
-        p_form = float(close.iloc[-FORMATION])
+        p_now = float(close.iloc[-1 - SKIP])
+        p_form = float(close.iloc[-1 - FORMATION])
         if p_form <= 0:
             continue
         score = p_now / p_form - 1
