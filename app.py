@@ -1320,7 +1320,11 @@ if mom_ticker_q:
     price_data_mt = load_many(tuple(DR_COVERED_EXPANDED), 3)
     close_mt = price_data_mt.get(mom_ticker_q)
     if close_mt is None or len(close_mt) < MOM_FORMATION + MOM_SKIP:
-        st.error(f"ไม่มีข้อมูลราคาพอสำหรับ {mom_ticker_q}")
+        st.error(f"ดึงราคา {mom_ticker_q} ไม่สำเร็จ — มักเป็นเพราะโดน rate-limit จาก Yahoo Finance ชั่วคราว "
+                 f"(พบบ่อยเวลารันบน Streamlit Cloud ที่แชร์ IP กับแอปอื่น) ไม่ใช่ว่าหุ้นตัวนี้ไม่มีข้อมูลจริง")
+        if st.button("🔄 ล้างแคชแล้วลองโหลดใหม่"):
+            load_many.clear()
+            st.rerun()
         st.stop()
 
     dr_symbol_mt, confidence_mt = get_dr_symbol(mom_ticker_q)
