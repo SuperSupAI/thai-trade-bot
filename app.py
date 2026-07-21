@@ -1319,7 +1319,8 @@ with st.sidebar:
     # ที่ค้างโหมด "สแกนทั้งกลุ่ม" จาก session cookie เดียวกัน แต่แท็บนี้เป็น deep link ที่ต้องใช้ symbol)
     symbol = sym_q if is_deep_link else "PIMO.BK"
     group = None  # ตั้งไว้ก่อนกัน NameError ตอน mode == "หุ้นเดียว" (group ไม่ถูกตั้งค่าในโหมดนั้น)
-    mode = st.radio("โหมด", ["📋 สรุปผลการทดลอง (Research Log)", "🤖 DR Momentum Bot Monitor"])
+    mode = st.radio("โหมด", ["📋 สรุปผลการทดลอง (Research Log)", "🤖 DR Momentum Bot Monitor",
+                             "📊 Backtest ย้อนหลัง (จุดเข้าซื้อ)"])
     if mode == "หุ้นเดียว":
         symbol = st.text_input("หุ้น (เช่น PIMO.BK)", symbol).strip().upper()
     elif mode == "สแกนทั้งกลุ่ม":
@@ -1334,7 +1335,8 @@ with st.sidebar:
     elif mode == "คัดหุ้นถือยาว (Fundamental)":
         group = st.selectbox("กลุ่ม", ["SET100 (ทั้งหมด)", "US100 (หุ้นอเมริกาจริง)", "DR หุ้นอเมริกา (มีใน SET)",
                                        "DR หุ้นต่างชาติอื่นๆ (ไม่ใช่อเมริกา)"] + list(SECTORS.keys()), key="screener_group")
-    if mode not in ("📋 สรุปผลการทดลอง (Research Log)", "🤖 DR Momentum Bot Monitor"):
+    if mode not in ("📋 สรุปผลการทดลอง (Research Log)", "🤖 DR Momentum Bot Monitor",
+                    "📊 Backtest ย้อนหลัง (จุดเข้าซื้อ)"):
         years = st.slider("ปีย้อนหลัง", 1, 10, years_q if is_deep_link else 5)
         cap = st.number_input("เงินต้น (บาท)", 1000, 10_000_000, int(cap_q) if is_deep_link else 50_000, 1000)
         fee = st.number_input("ค่าธรรมเนียม %/ข้าง", 0.0, 1.0, round(fee_q * 100, 2) if is_deep_link else 0.2, 0.05) / 100
@@ -1536,6 +1538,100 @@ if mode == "🤖 DR Momentum Bot Monitor":
                    "หน้านี้รันได้เฉพาะตอนรันแอปบนเครื่อง local ที่มีไฟล์ .env เท่านั้น "
                    "(เวอร์ชันบน Streamlit Cloud จะไม่มีไฟล์นี้ ไม่ต่อบัญชีได้เป็นปกติ)")
 
+    st.stop()
+
+if mode == "📊 Backtest ย้อนหลัง (จุดเข้าซื้อ)":
+    st.header("📊 Backtest ย้อนหลัง — จุดเข้าซื้อจริง")
+    st.caption("จำลองรีบาลานซ์ตามสูตร momentum baseline (DR universe 47 ตัว, top 3, รีบาลานซ์ทุก ~21 วันเทรด "
+               "ไม่มี overlay) ย้อนหลังตามช่วงที่เลือก ดูว่าซื้อ/ขายตัวไหนวันไหนบ้าง")
+
+    from dr_universe import DR_COVERED_EXPANDED, get_dr_symbol
+
+    BT_FORMATION, BT_SKIP, BT_REBAL, BT_TOP_N = 252, 21, 21, 3
+    years_back = st.slider("ย้อนหลังกี่ปี", 1, 5, 2)
+
+    with st.spinner("กำลังรันแบ็คเทสต์..."):
+        price_data = load_many(tuple(DR_COVERED_EXPANDED), years_back + 2)  # เผื่อ formation window ~1 ปีก่อนวันแรกที่เทรดจริง
+
+        avail = [t for t in DR_COVERED_EXPANDED if t in price_data]
+        all_dates = sorted(set().union(*(price_data[t].index for t in avail)))
+        cutoff = all_dates[-1] - pd.Timedelta(days=years_back * 365)
+        test_dates = [d for d in all_dates if d >= cutoff]
+
+        positions = {}
+        trade_log = []
+        for dt in test_dates[::BT_REBAL]:
+            scores = []
+            for t in avail:
+                close = price_data[t]
+                if dt not in close.index:
+                    continue
+                i = close.index.get_loc(dt)
+                if i < BT_FORMATION:
+                    continue
+                p_now = close.iloc[i - BT_SKIP]
+                p_form = close.iloc[i - BT_FORMATION]
+                if p_form <= 0:
+                    continue
+                scores.append((t, p_now / p_form - 1))
+            scores.sort(key=lambda x: x[1], reverse=True)
+            target = set(s for s, _ in scores[:BT_TOP_N])
+
+            for t in list(positions):
+                if t not in target:
+                    close = price_data[t]
+                    price = float(close.loc[dt]) if dt in close.index else None
+                    trade_log.append(dict(date=dt, action="SELL", ticker=t, price=price))
+                    del positions[t]
+            for t in target:
+                if t not in positions:
+                    price = float(price_data[t].loc[dt])
+                    trade_log.append(dict(date=dt, action="BUY", ticker=t, price=price))
+                    positions[t] = price
+
+    if not trade_log:
+        st.warning("ไม่มีข้อมูลพอสำหรับช่วงเวลานี้ (หุ้นอาจยังไม่มีราคาย้อนหลังพอ)")
+        st.stop()
+
+    log_df = pd.DataFrame(trade_log)
+    log_df["รหัส DR"] = log_df["ticker"].apply(lambda t: get_dr_symbol(t)[0] or "-")
+    display_df = log_df.rename(columns={"date": "วันที่", "action": "รายการ", "ticker": "หุ้นแม่", "price": "ราคา"})
+    display_df = display_df.sort_values("วันที่", ascending=False)
+
+    st.subheader(f"ประวัติการซื้อ/ขาย ({years_back} ปีย้อนหลัง, {len(log_df)} รายการ)")
+    st.dataframe(display_df[["วันที่", "รายการ", "หุ้นแม่", "รหัส DR", "ราคา"]],
+                 use_container_width=True, hide_index=True)
+
+    if positions:
+        st.success(f"ถืออยู่ตอนนี้: {', '.join(positions.keys())}")
+
+    st.divider()
+    st.subheader("📈 กราฟจุดเข้าซื้อ/ขาย รายตัว")
+    for ticker in log_df["ticker"].unique():
+        close = price_data.get(ticker)
+        if close is None:
+            continue
+        dr_symbol, confidence = get_dr_symbol(ticker)
+        held_now = " ✅ ถืออยู่ตอนนี้" if ticker in positions else ""
+        st.markdown(f"**{ticker}** → `{dr_symbol or '-'}`{held_now}")
+
+        pdf = pd.DataFrame({"date": close.index, "close": close.values})
+        pdf = pdf[pdf["date"] >= cutoff - pd.Timedelta(days=60)]
+        line = alt.Chart(pdf).mark_line(color="#9aa4b2").encode(x="date:T", y=alt.Y("close:Q", title="ราคา (สกุลเงินเดิม)"))
+
+        events = log_df[log_df["ticker"] == ticker]
+        buy_pts = events[events["action"] == "BUY"]
+        sell_pts = events[(events["action"] == "SELL") & events["price"].notna()]
+        layers = [line]
+        if not buy_pts.empty:
+            layers.append(alt.Chart(buy_pts).mark_point(
+                shape="triangle-up", size=140, color="#2ea043", filled=True).encode(x="date:T", y="price:Q"))
+        if not sell_pts.empty:
+            layers.append(alt.Chart(sell_pts).mark_point(
+                shape="triangle-down", size=140, color="#f85149", filled=True).encode(x="date:T", y="price:Q"))
+        st.altair_chart(alt.layer(*layers).properties(height=250), use_container_width=True)
+
+    st.caption("▲ เขียว = จุดซื้อ (เข้า top 3) · ▼ แดง = จุดขาย (หลุด top 3)")
     st.stop()
 
 # ══════════ เปิดจากลิงก์แท็บใหม่ (ดูกราฟหุ้นเดียว จากผลสแกน) ══════════
