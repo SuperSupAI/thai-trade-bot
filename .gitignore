@@ -32,3 +32,9 @@ webull_bot/*.log
 *_output_*.txt
 webull_bot/backtest_output*.txt
 *.pkl
+
+# dr_momentum_bot — credential Settrade Open API (app_id/app_secret/pin) มาจาก env var เท่านั้น
+# กันเผื่อใครสร้างไฟล์ .env/config local ไว้ทดสอบเอง ไม่ให้หลุดขึ้น repo
+dr_momentum_bot/.env
+dr_momentum_bot/config.local.py
+dr_momentum_bot/*.log

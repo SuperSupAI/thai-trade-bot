@@ -2,11 +2,16 @@
 Thai Trade Bot — Backtest web app (Streamlit)
 กลยุทธ์ ① EMA Trend + SET Filter · โหมด: หุ้นเดียว / สแกนทั้งกลุ่ม
 """
+import os
+import sys
+
 import numpy as np
 import pandas as pd
 import streamlit as st
 import altair as alt
 from universe import SECTORS, group_symbols, get_market_type, is_us_group, US_MARKET_INDEX
+
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "dr_momentum_bot"))
 
 
 def get_stock_sector(symbol):
@@ -1315,7 +1320,7 @@ with st.sidebar:
     symbol = sym_q if is_deep_link else "PIMO.BK"
     group = None  # ตั้งไว้ก่อนกัน NameError ตอน mode == "หุ้นเดียว" (group ไม่ถูกตั้งค่าในโหมดนั้น)
     mode = st.radio("โหมด", ["หุ้นเดียว", "สแกนทั้งกลุ่ม", "คัดหุ้นถือยาว (Fundamental)",
-                             "📋 สรุปผลการทดลอง (Research Log)"])
+                             "📋 สรุปผลการทดลอง (Research Log)", "🤖 DR Momentum Bot Monitor"])
     if mode == "หุ้นเดียว":
         symbol = st.text_input("หุ้น (เช่น PIMO.BK)", symbol).strip().upper()
     elif mode == "สแกนทั้งกลุ่ม":
@@ -1446,6 +1451,91 @@ with st.sidebar:
 
 if mode == "📋 สรุปผลการทดลอง (Research Log)":
     st.markdown(RESEARCH_LOG_MD)
+    st.stop()
+
+if mode == "🤖 DR Momentum Bot Monitor":
+    st.header("🤖 DR Momentum Bot — Monitor")
+    st.caption("อันดับ momentum ปัจจุบัน (สูตร baseline ล้วนๆ ไม่มี overlay — พิสูจน์แล้วว่า overlay overfit) "
+               "+ สถานะบัญชี Settrade Open API ถ้าต่อไว้ · เพื่อการเรียนรู้ ไม่ใช่คำแนะนำลงทุน")
+
+    from dr_universe import DR_COVERED_EXPANDED, get_dr_symbol
+
+    BOT_FORMATION, BOT_SKIP, BOT_TOP_N = 252, 21, 3
+
+    with st.spinner("กำลังคำนวณอันดับ momentum..."):
+        price_data = load_many(tuple(DR_COVERED_EXPANDED), 2)
+        scores = []
+        for ticker, close in price_data.items():
+            if close is None or len(close) < BOT_FORMATION + BOT_SKIP:
+                continue
+            p_now = float(close.iloc[-BOT_SKIP])
+            p_form = float(close.iloc[-BOT_FORMATION])
+            if p_form <= 0:
+                continue
+            scores.append((ticker, p_now / p_form - 1))
+        scores.sort(key=lambda x: x[1], reverse=True)
+
+    st.subheader(f"อันดับ Momentum ปัจจุบัน (top {BOT_TOP_N} = ตัวที่ควรถือเดือนนี้)")
+    rows = []
+    for rank, (ticker, score) in enumerate(scores[:10], start=1):
+        dr_symbol, confidence = get_dr_symbol(ticker)
+        rows.append({
+            "อันดับ": rank, "หุ้นแม่": ticker, "โมเมนตัม (12mo skip1mo)": f"{score*100:+.1f}%",
+            "รหัส DR": dr_symbol or "-",
+            "สถานะ": "✅ ควรถือ" if rank <= BOT_TOP_N else "",
+            "ความมั่นใจรหัส DR": confidence,
+        })
+    st.dataframe(pd.DataFrame(rows), use_container_width=True, hide_index=True)
+    if any(r["ความมั่นใจรหัส DR"] == "unconfirmed" for r in rows[:BOT_TOP_N]):
+        st.warning("มีตัวที่ติด top 3 แต่รหัส DR ยังไม่ยืนยัน (unconfirmed) — เช็คที่ set.or.th ก่อนส่งออเดอร์จริง")
+
+    st.divider()
+    st.subheader(f"📈 กราฟตัวที่ถืออยู่ (Top {BOT_TOP_N})")
+    for ticker, score in scores[:BOT_TOP_N]:
+        dr_symbol, confidence = get_dr_symbol(ticker)
+        close = price_data.get(ticker)
+        if close is None or len(close) < BOT_FORMATION + BOT_SKIP:
+            continue
+        formation_date = close.index[-BOT_FORMATION]
+        skip_date = close.index[-BOT_SKIP]
+        pdf = pd.DataFrame({"date": close.index, "close": close.values}).tail(300)
+
+        flag = "" if confidence == "confirmed" else " ⚠️ รหัส DR ยังไม่ยืนยัน"
+        st.markdown(f"**{ticker}** → `{dr_symbol or '-'}`{flag} — momentum {score*100:+.1f}%")
+
+        line = alt.Chart(pdf).mark_line(color="#58a6ff").encode(x="date:T", y=alt.Y("close:Q", title="ราคา (สกุลเงินเดิม)"))
+        formation_rule = alt.Chart(pd.DataFrame({"x": [formation_date]})).mark_rule(
+            color="#3fb950", strokeDash=[4, 3]).encode(x="x:T")
+        skip_rule = alt.Chart(pd.DataFrame({"x": [skip_date]})).mark_rule(
+            color="#f0883e", strokeDash=[4, 3]).encode(x="x:T")
+        st.altair_chart((line + formation_rule + skip_rule).properties(height=220), use_container_width=True)
+        st.caption("เส้นเขียว = จุดเริ่ม formation (~12 เดือนก่อน) · เส้นส้ม = จุด skip (~1 เดือนก่อน ที่ใช้คำนวณ momentum)")
+
+    st.divider()
+    st.subheader("💰 สถานะบัญชี Settrade (Sandbox)")
+    try:
+        from settrade_client import get_equity_account
+        equity = get_equity_account()
+        info = equity.get_account_info()
+        c1, c2, c3 = st.columns(3)
+        c1.metric("เงินสดคงเหลือ", f"{info.get('cashBalance', 0):,.0f} บาท")
+        c2.metric("วงเงินซื้อได้", f"{info.get('lineAvailable', 0):,.0f} บาท")
+        c3.metric("ประเภทบัญชี", info.get("accountType", "-"))
+
+        portfolios = equity.get_portfolios()
+        # response จริงเป็น dict {'portfolioList': [...], 'totalPortfolio': {...}} ไม่ใช่ list ตรงๆ
+        portfolio_list = portfolios.get("portfolioList", []) if isinstance(portfolios, dict) else portfolios
+        if portfolio_list:
+            st.markdown("**พอร์ตปัจจุบัน**")
+            st.dataframe(pd.DataFrame(portfolio_list), use_container_width=True, hide_index=True)
+        else:
+            st.info("ยังไม่มีหุ้นในพอร์ต (บัญชี Sandbox ว่างอยู่)")
+    except Exception as e:
+        st.warning(f"ยังไม่ได้ต่อ Settrade Open API ({type(e).__name__}) — ตั้งค่า credential ใน "
+                   "`dr_momentum_bot/.env` ก่อน (ดูวิธีใน `dr_momentum_bot/settrade_client.py`) "
+                   "หน้านี้รันได้เฉพาะตอนรันแอปบนเครื่อง local ที่มีไฟล์ .env เท่านั้น "
+                   "(เวอร์ชันบน Streamlit Cloud จะไม่มีไฟล์นี้ ไม่ต่อบัญชีได้เป็นปกติ)")
+
     st.stop()
 
 # ══════════ เปิดจากลิงก์แท็บใหม่ (ดูกราฟหุ้นเดียว จากผลสแกน) ══════════
