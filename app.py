@@ -24,6 +24,79 @@ def get_stock_sector(symbol):
 from fundamentals import get_fundamentals, passes_fundamental_filter, format_ratio
 
 st.set_page_config(page_title="Thai Trade Bot — Backtest", page_icon="🤖", layout="wide")
+
+st.markdown("""
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Mali:wght@400;500;600;700;800&family=Sarabun:wght@300;400;500;600&display=swap');
+
+:root {
+  --paper: #FAF7F2;
+  --card: #F9F6F0;
+  --ink: #3D2E22;
+  --inks: #6B5D4F;
+  --brown: #8B5E34;
+  --brownS: #EDE0D0;
+  --green: #4F7A52;
+  --greenS: #DDEBDD;
+  --line: #DDD4C7;
+}
+
+html, body, [class^="st-"], [class*=" st-"] { font-family: 'Sarabun', sans-serif; }
+
+[data-testid="stMain"], [data-testid="stAppViewContainer"] {
+  background: var(--paper) repeating-linear-gradient(to bottom, transparent, transparent 34px, var(--line) 34px, var(--line) 35px);
+}
+
+[data-testid="stSidebar"] {
+  background: var(--brownS) !important;
+  border-right: 1px solid var(--line);
+}
+[data-testid="stSidebar"] * { color: var(--ink) !important; }
+
+h1, h2, h3 { font-family: 'Mali', cursive !important; color: var(--ink) !important; }
+h1 { font-weight: 800 !important; }
+h2, h3 { font-weight: 700 !important; }
+
+p, li, label, span, div { color: var(--ink); }
+
+a { color: var(--brown) !important; }
+a:hover { color: var(--green) !important; }
+
+[data-testid="stCaptionContainer"] { color: var(--inks) !important; }
+
+.stButton > button, [data-testid="stBaseButton-primary"], [data-testid="stBaseButton-secondary"] {
+  background: var(--brown) !important;
+  color: #FAF7F2 !important;
+  border: none !important;
+  border-radius: 20px !important;
+  font-family: 'Sarabun', sans-serif !important;
+}
+.stButton > button:hover { background: var(--green) !important; }
+
+[data-testid="stMetric"] {
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 14px 16px;
+}
+
+[data-testid="stDataFrame"], [data-testid="stTable"] {
+  border: 1px solid var(--line) !important;
+  border-radius: 10px !important;
+  overflow: hidden;
+}
+
+[data-baseweb="tab"] { font-family: 'Mali', cursive !important; }
+
+hr { border-color: var(--line) !important; }
+
+table { border-color: var(--line) !important; }
+th { color: var(--brown) !important; }
+
+[data-testid="stAlert"] { border-radius: 10px; }
+</style>
+""", unsafe_allow_html=True)
+
 st.title("🤖 Thai Trade Bot — Backtest")
 st.caption("ทดสอบกลยุทธ์บนข้อมูลอดีต · เทียบ Buy & Hold · เพื่อการเรียนรู้ ไม่ใช่คำแนะนำลงทุน")
 
@@ -1558,7 +1631,7 @@ if mode == "🤖 DR Momentum Bot Monitor":
         tds = [
             f'<td style="text-align:right;padding:6px 10px;">{rank}</td>',
             f'<td style="padding:6px 10px;"><a href="{html_lib.escape(url)}" target="_blank" '
-            f'style="color:#3fa7ff;text-decoration:none;font-weight:600;">{html_lib.escape(ticker)}</a></td>',
+            f'style="color:#8B5E34;text-decoration:none;font-weight:600;">{html_lib.escape(ticker)}</a></td>',
             f'<td style="text-align:right;padding:6px 10px;white-space:nowrap;">{score*100:+.1f}%</td>',
             f'<td style="text-align:right;padding:6px 10px;">{html_lib.escape(trade_symbol or "-")}</td>',
             f'<td style="text-align:right;padding:6px 10px;white-space:nowrap;">{status}</td>',
@@ -1897,7 +1970,7 @@ if mode == "คัดหุ้นถือยาว (Fundamental)":
                f"&ema3050tp15={1 if use_ema30_50_tp15_exit else 0}&tp5sl10={1 if use_tp5_sl10_exit else 0}"
                f"&us={1 if is_us_group(group) else 0}")
         tds = [f'<td style="padding:6px 10px;"><a href="{html_lib.escape(url)}" target="_blank" '
-               f'style="color:#3fa7ff;text-decoration:none;font-weight:600;">{html_lib.escape(sym)}</a></td>']
+               f'style="color:#8B5E34;text-decoration:none;font-weight:600;">{html_lib.escape(sym)}</a></td>']
         for c in cols[1:]:
             tds.append(f'<td style="text-align:right;padding:6px 10px;white-space:nowrap;">{html_lib.escape(str(r[c]))}</td>')
         rows_html.append(f'<tr style="border-bottom:1px solid rgba(128,128,128,.15);">{"".join(tds)}</tr>')
@@ -2075,7 +2148,7 @@ if mode == "สแกนทั้งกลุ่ม":
                    f"&ema3050tp15={1 if use_ema30_50_tp15_exit else 0}&tp5sl10={1 if use_tp5_sl10_exit else 0}"
                f"&us={1 if is_us_group(group) else 0}")
             tds = [f'<td style="padding:6px 10px;"><a href="{html_lib.escape(url)}" target="_blank" '
-                   f'style="color:#3fa7ff;text-decoration:none;font-weight:600;">{html_lib.escape(sym)}</a></td>']
+                   f'style="color:#8B5E34;text-decoration:none;font-weight:600;">{html_lib.escape(sym)}</a></td>']
             for c in cols[1:]:
                 tds.append(f'<td style="text-align:right;padding:6px 10px;white-space:nowrap;">{html_lib.escape(str(r[c]))}</td>')
             rows_html.append(f'<tr style="border-bottom:1px solid rgba(128,128,128,.15);">{"".join(tds)}</tr>')
