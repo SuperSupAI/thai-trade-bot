@@ -75,3 +75,24 @@ DR_SYMBOL_MAP = {
 def get_dr_symbol(underlying_ticker: str):
     """คืน (รหัส DR, confidence) หรือ (None, 'missing') ถ้าไม่มีใน mapping เลย"""
     return DR_SYMBOL_MAP.get(underlying_ticker, (None, "missing"))
+
+
+# Universe หุ้นไทย 75 ตัว (test_thai_cross_sectional_momentum.py, thai_stocks_10y_cache.pkl) --
+# เทรดตรงบน SET ไม่ต้องแปลง DR ไม่ต้องแปลงสกุลเงิน (THB อยู่แล้ว) -- ticker มี .BK ต่อท้ายสำหรับ yfinance
+# เท่านั้น ตอนส่งออเดอร์จริงบน Settrade ใช้แค่ชื่อย่อ (ตัด .BK ออก) เช่น "ADVANC" ไม่ใช่ "ADVANC.BK"
+THAI_MOMENTUM_UNIVERSE = [
+    "ADVANC.BK", "AEONTS.BK", "AH.BK", "AMATA.BK", "AOT.BK", "AP.BK", "BANPU.BK", "BBL.BK", "BCH.BK",
+    "BCP.BK", "BDMS.BK", "BEM.BK", "BGRIM.BK", "BH.BK", "BJC.BK", "BLA.BK", "BTS.BK", "CBG.BK",
+    "CENTEL.BK", "CHG.BK", "CK.BK", "COM7.BK", "CPALL.BK", "CPF.BK", "CRC.BK", "DELTA.BK", "DOHOME.BK",
+    "EA.BK", "EGCO.BK", "ERW.BK", "GFPT.BK", "GLOBAL.BK", "GPSC.BK", "HANA.BK", "HMPRO.BK", "IRPC.BK",
+    "ITC.BK", "IVL.BK", "KBANK.BK", "KCE.BK", "KKP.BK", "KTB.BK", "KTC.BK", "LH.BK", "MINT.BK",
+    "MTC.BK", "NER.BK", "OR.BK", "ORI.BK", "OSP.BK", "PR9.BK", "PSH.BK", "PTT.BK", "PTTEP.BK",
+    "PTTGC.BK", "QH.BK", "RATCH.BK", "SAT.BK", "SAWAD.BK", "SCB.BK", "SCC.BK", "SCCC.BK", "SCGP.BK",
+    "SIRI.BK", "SPALI.BK", "SPRC.BK", "TASCO.BK", "TISCO.BK", "TOP.BK", "TPIPL.BK", "TRUE.BK", "TTB.BK",
+    "TU.BK", "TVO.BK", "WHA.BK",
+]
+
+
+def get_thai_trade_symbol(yf_ticker: str) -> str:
+    """ตัด .BK ออก -- ใช้เป็นรหัสหุ้นตอนส่งออเดอร์จริงบน Settrade"""
+    return yf_ticker[:-3] if yf_ticker.endswith(".BK") else yf_ticker
