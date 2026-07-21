@@ -1312,6 +1312,48 @@ if is_deep_link:
     entry_idx_q = 3 if emastack_q else (2 if hhhl_q else (1 if cross_q else 0))
     exit_idx_q = 5 if tp5sl10_q else (4 if ema3050tp15_q else (3 if ema3050_q else (2 if ema5trail_q else (1 if scaling_q else 0))))
 
+# ── deep link: คลิกหุ้นจากตารางอันดับ momentum → เปิดแท็บใหม่ดูราคา + กราฟ momentum score ย้อนหลัง ──
+mom_ticker_q = qp.get("mom_ticker", "")
+if mom_ticker_q:
+    from dr_universe import DR_COVERED_EXPANDED, get_dr_symbol
+    MOM_FORMATION, MOM_SKIP = 252, 21
+    price_data_mt = load_many(tuple(DR_COVERED_EXPANDED), 3)
+    close_mt = price_data_mt.get(mom_ticker_q)
+    if close_mt is None or len(close_mt) < MOM_FORMATION + MOM_SKIP:
+        st.error(f"ไม่มีข้อมูลราคาพอสำหรับ {mom_ticker_q}")
+        st.stop()
+
+    dr_symbol_mt, confidence_mt = get_dr_symbol(mom_ticker_q)
+    current_score_mt = (close_mt.iloc[-1 - MOM_SKIP] / close_mt.iloc[-1 - MOM_FORMATION] - 1) * 100
+    st.title(f"📈 {mom_ticker_q} — ราคา + Momentum Score")
+    flag_mt = "" if confidence_mt == "confirmed" else " ⚠️ รหัส DR ยังไม่ยืนยัน"
+    st.caption(f"รหัส DR: `{dr_symbol_mt or '-'}`{flag_mt} · momentum ปัจจุบัน (12mo skip1mo): {current_score_mt:+.1f}%")
+
+    st.subheader("💹 ราคา")
+    pdf_mt = pd.DataFrame({"date": close_mt.index, "close": close_mt.values}).tail(400)
+    formation_date_mt = close_mt.index[-1 - MOM_FORMATION]
+    skip_date_mt = close_mt.index[-1 - MOM_SKIP]
+    line_mt = alt.Chart(pdf_mt).mark_line(color="#58a6ff").encode(
+        x="date:T", y=alt.Y("close:Q", title="ราคา (สกุลเงินเดิม)"))
+    formation_rule_mt = alt.Chart(pd.DataFrame({"x": [formation_date_mt]})).mark_rule(
+        color="#3fb950", strokeDash=[4, 3]).encode(x="x:T")
+    skip_rule_mt = alt.Chart(pd.DataFrame({"x": [skip_date_mt]})).mark_rule(
+        color="#f0883e", strokeDash=[4, 3]).encode(x="x:T")
+    st.altair_chart((line_mt + formation_rule_mt + skip_rule_mt).properties(height=280), use_container_width=True)
+    st.caption("เส้นเขียว = จุดเริ่ม formation (~12 เดือนก่อน) · เส้นส้ม = จุด skip (~1 เดือนก่อน ที่ใช้คำนวณ momentum)")
+
+    st.subheader("📊 Momentum Score ย้อนหลัง")
+    st.caption("ค่า momentum ณ แต่ละวัน = close[วัน-1เดือน] / close[วัน-12เดือน] - 1 (สูตรเดียวกับที่บอทใช้จัดอันดับจริง)")
+    mom_score_series = (close_mt.shift(MOM_SKIP) / close_mt.shift(MOM_FORMATION) - 1).dropna() * 100
+    mdf = pd.DataFrame({"date": mom_score_series.index, "score": mom_score_series.values}).tail(500)
+    mom_line = alt.Chart(mdf).mark_line(color="#d29922").encode(
+        x="date:T", y=alt.Y("score:Q", title="Momentum score (%)"))
+    zero_rule = alt.Chart(pd.DataFrame({"y": [0]})).mark_rule(color="#666", strokeDash=[2, 2]).encode(y="y:Q")
+    st.altair_chart((mom_line + zero_rule).properties(height=280), use_container_width=True)
+    st.caption(f"เทียบสถิติ: max ที่เคยเห็นในช่วงนี้ {mom_score_series.max():+.1f}% · min {mom_score_series.min():+.1f}% "
+               f"· ปัจจุบัน {mom_score_series.iloc[-1]:+.1f}%")
+    st.stop()
+
 # ── sidebar ──
 with st.sidebar:
     st.header("⚙️ ตั้งค่า")
@@ -1470,25 +1512,46 @@ if mode == "🤖 DR Momentum Bot Monitor":
         for ticker, close in price_data.items():
             if close is None or len(close) < BOT_FORMATION + BOT_SKIP:
                 continue
-            p_now = float(close.iloc[-BOT_SKIP])
-            p_form = float(close.iloc[-BOT_FORMATION])
+            p_now = float(close.iloc[-1 - BOT_SKIP])
+            p_form = float(close.iloc[-1 - BOT_FORMATION])
             if p_form <= 0:
                 continue
             scores.append((ticker, p_now / p_form - 1))
         scores.sort(key=lambda x: x[1], reverse=True)
 
     st.subheader(f"อันดับ Momentum ปัจจุบัน (top {BOT_TOP_N} = ตัวที่ควรถือเดือนนี้)")
+    st.caption("คลิกชื่อหุ้นเพื่อเปิดแท็บใหม่ ดูกราฟราคา + กราฟ momentum score ย้อนหลัง")
+    import html as html_lib
+
     rows = []
+    unconfirmed_in_top = False
+    header = "".join(
+        f'<th style="text-align:{"left" if c == "หุ้นแม่" else "right"};padding:6px 10px;'
+        f'border-bottom:2px solid rgba(128,128,128,.4);white-space:nowrap;">{c}</th>'
+        for c in ["อันดับ", "หุ้นแม่", "โมเมนตัม (12mo skip1mo)", "รหัส DR", "สถานะ"]
+    )
+    rows_html = []
     for rank, (ticker, score) in enumerate(scores[:10], start=1):
         dr_symbol, confidence = get_dr_symbol(ticker)
-        rows.append({
-            "อันดับ": rank, "หุ้นแม่": ticker, "โมเมนตัม (12mo skip1mo)": f"{score*100:+.1f}%",
-            "รหัส DR": dr_symbol or "-",
-            "สถานะ": "✅ ควรถือ" if rank <= BOT_TOP_N else "",
-            "ความมั่นใจรหัส DR": confidence,
-        })
-    st.dataframe(pd.DataFrame(rows), use_container_width=True, hide_index=True)
-    if any(r["ความมั่นใจรหัส DR"] == "unconfirmed" for r in rows[:BOT_TOP_N]):
+        if confidence == "unconfirmed" and rank <= BOT_TOP_N:
+            unconfirmed_in_top = True
+        status = "✅ ควรถือ" if rank <= BOT_TOP_N else ""
+        url = f"?mom_ticker={ticker}"
+        tds = [
+            f'<td style="text-align:right;padding:6px 10px;">{rank}</td>',
+            f'<td style="padding:6px 10px;"><a href="{html_lib.escape(url)}" target="_blank" '
+            f'style="color:#3fa7ff;text-decoration:none;font-weight:600;">{html_lib.escape(ticker)}</a></td>',
+            f'<td style="text-align:right;padding:6px 10px;white-space:nowrap;">{score*100:+.1f}%</td>',
+            f'<td style="text-align:right;padding:6px 10px;">{html_lib.escape(dr_symbol or "-")}</td>',
+            f'<td style="text-align:right;padding:6px 10px;white-space:nowrap;">{status}</td>',
+        ]
+        rows_html.append(f'<tr style="border-bottom:1px solid rgba(128,128,128,.15);">{"".join(tds)}</tr>')
+    st.markdown(
+        f'<div style="overflow-x:auto;"><table style="width:100%;border-collapse:collapse;font-size:14px;">'
+        f'<thead><tr>{header}</tr></thead><tbody>{"".join(rows_html)}</tbody></table></div>',
+        unsafe_allow_html=True,
+    )
+    if unconfirmed_in_top:
         st.warning("มีตัวที่ติด top 3 แต่รหัส DR ยังไม่ยืนยัน (unconfirmed) — เช็คที่ set.or.th ก่อนส่งออเดอร์จริง")
 
     st.divider()
@@ -1498,8 +1561,8 @@ if mode == "🤖 DR Momentum Bot Monitor":
         close = price_data.get(ticker)
         if close is None or len(close) < BOT_FORMATION + BOT_SKIP:
             continue
-        formation_date = close.index[-BOT_FORMATION]
-        skip_date = close.index[-BOT_SKIP]
+        formation_date = close.index[-1 - BOT_FORMATION]
+        skip_date = close.index[-1 - BOT_SKIP]
         pdf = pd.DataFrame({"date": close.index, "close": close.values}).tail(300)
 
         flag = "" if confidence == "confirmed" else " ⚠️ รหัส DR ยังไม่ยืนยัน"
