@@ -1334,119 +1334,120 @@ with st.sidebar:
     elif mode == "คัดหุ้นถือยาว (Fundamental)":
         group = st.selectbox("กลุ่ม", ["SET100 (ทั้งหมด)", "US100 (หุ้นอเมริกาจริง)", "DR หุ้นอเมริกา (มีใน SET)",
                                        "DR หุ้นต่างชาติอื่นๆ (ไม่ใช่อเมริกา)"] + list(SECTORS.keys()), key="screener_group")
-    years = st.slider("ปีย้อนหลัง", 1, 10, years_q if is_deep_link else 5)
-    cap = st.number_input("เงินต้น (บาท)", 1000, 10_000_000, int(cap_q) if is_deep_link else 50_000, 1000)
-    fee = st.number_input("ค่าธรรมเนียม %/ข้าง", 0.0, 1.0, round(fee_q * 100, 2) if is_deep_link else 0.2, 0.05) / 100
+    if mode not in ("📋 สรุปผลการทดลอง (Research Log)", "🤖 DR Momentum Bot Monitor"):
+        years = st.slider("ปีย้อนหลัง", 1, 10, years_q if is_deep_link else 5)
+        cap = st.number_input("เงินต้น (บาท)", 1000, 10_000_000, int(cap_q) if is_deep_link else 50_000, 1000)
+        fee = st.number_input("ค่าธรรมเนียม %/ข้าง", 0.0, 1.0, round(fee_q * 100, 2) if is_deep_link else 0.2, 0.05) / 100
 
-    st.divider()
-    st.subheader("🎯 กลยุทธ์ ENTRY (เข้า)")
-    entry_strategy = st.radio("เลือกเงื่อนไขเข้า",
-                       ["Default (EMA10>50>200 + MACD>0)", "EMA50 ตัดขึ้น EMA100 + Trend Filter",
-                        "HH-HL Breakout (2 ชุดติดกัน)", "EMA Stack เรียงขั้นบันได (5>10>30>50>100>200)"],
-                       index=entry_idx_q if is_deep_link else 0,
-                       help="แบบที่ 2: เข้าเฉพาะวันที่ EMA50 ตัดขึ้น EMA100 (ครั้งแรก) + Close>EMA200 · EMA10>EMA50 · MACD>0 "
-                            "(ไม่บังคับ EMA50>EMA200 ฝั่งหุ้น เพราะตอนตัดขึ้นมักยังไม่ทัน)\n\n"
-                            "แบบที่ 3: เข้าตอนราคาทะลุ Swing High (breakout) หลังเกิดแพทเทิร์น Higher-High/"
-                            "Higher-Low ติดกัน 2 ชุด — เป็น price action ล้วน ไม่ใช้เงื่อนไข EMA ฝั่งหุ้น "
-                            "และไม่ใช้เงื่อนไข SET เลย "
-                            "(Low ชุดที่ 2 ยังนับเป็น Higher Low ได้ถ้าต่ำกว่า Low ชุดแรกไม่เกิน 5%)\n\n"
-                            "แบบที่ 4: หุ้น `Close>EMA5>EMA10>EMA30>EMA50>EMA100>EMA200` เรียงขั้นบันไดครบทุกเส้น "
-                            "(แนวโน้มขึ้นชัดเจนทุกกรอบเวลา) **และ** ต้องทำ New High รอบ 1 ปี (252 วันเทรด) ด้วย "
-                            "— ถ้าไม่เบรก 1 ปีย้อนหลังไม่เข้า — เช็คตอนปิดตลาด ซื้อได้ระหว่างวันถัดไป")
-    use_ema_cross = entry_strategy == "EMA50 ตัดขึ้น EMA100 + Trend Filter"
-    use_hh_hl = entry_strategy == "HH-HL Breakout (2 ชุดติดกัน)"
-    use_ema_stack = entry_strategy == "EMA Stack เรียงขั้นบันได (5>10>30>50>100>200)"
+        st.divider()
+        st.subheader("🎯 กลยุทธ์ ENTRY (เข้า)")
+        entry_strategy = st.radio("เลือกเงื่อนไขเข้า",
+                           ["Default (EMA10>50>200 + MACD>0)", "EMA50 ตัดขึ้น EMA100 + Trend Filter",
+                            "HH-HL Breakout (2 ชุดติดกัน)", "EMA Stack เรียงขั้นบันได (5>10>30>50>100>200)"],
+                           index=entry_idx_q if is_deep_link else 0,
+                           help="แบบที่ 2: เข้าเฉพาะวันที่ EMA50 ตัดขึ้น EMA100 (ครั้งแรก) + Close>EMA200 · EMA10>EMA50 · MACD>0 "
+                                "(ไม่บังคับ EMA50>EMA200 ฝั่งหุ้น เพราะตอนตัดขึ้นมักยังไม่ทัน)\n\n"
+                                "แบบที่ 3: เข้าตอนราคาทะลุ Swing High (breakout) หลังเกิดแพทเทิร์น Higher-High/"
+                                "Higher-Low ติดกัน 2 ชุด — เป็น price action ล้วน ไม่ใช้เงื่อนไข EMA ฝั่งหุ้น "
+                                "และไม่ใช้เงื่อนไข SET เลย "
+                                "(Low ชุดที่ 2 ยังนับเป็น Higher Low ได้ถ้าต่ำกว่า Low ชุดแรกไม่เกิน 5%)\n\n"
+                                "แบบที่ 4: หุ้น `Close>EMA5>EMA10>EMA30>EMA50>EMA100>EMA200` เรียงขั้นบันไดครบทุกเส้น "
+                                "(แนวโน้มขึ้นชัดเจนทุกกรอบเวลา) **และ** ต้องทำ New High รอบ 1 ปี (252 วันเทรด) ด้วย "
+                                "— ถ้าไม่เบรก 1 ปีย้อนหลังไม่เข้า — เช็คตอนปิดตลาด ซื้อได้ระหว่างวันถัดไป")
+        use_ema_cross = entry_strategy == "EMA50 ตัดขึ้น EMA100 + Trend Filter"
+        use_hh_hl = entry_strategy == "HH-HL Breakout (2 ชุดติดกัน)"
+        use_ema_stack = entry_strategy == "EMA Stack เรียงขั้นบันได (5>10>30>50>100>200)"
 
-    st.divider()
-    st.subheader("🎯 กลยุทธ์ EXIT")
-    strategy = st.radio("เลือกกลยุทธ์",
-                       ["Default (Trail EMA50)", "Scaling Out (10%→50%, 20%→50%)", "EMA5 Trail (ตัด EMA5 ขายหมด)",
-                        "EMA30 ตัดลง EMA50 (ขายหมด)", "EMA30 ตัดลง EMA50 + Take Profit 15%",
-                        "Quick TP/SL (ไม่มี EMA)"],
-                       index=exit_idx_q if is_deep_link else 0,
-                       help="Scaling Out: ขาย50% ที่ 10%, ขาย50% ที่ 20%, ปล่อยไป -5%\n\n"
-                            "EMA5 Trail: เงื่อนไขเดียวล้วนๆ ไม่ผสม scaling — ถือเต็มไม้ ขายหมดทันทีที่ราคาปิดต่ำกว่า EMA5 "
-                            "(หรือโดน SL -8% ก่อน) รัดเข็มขัดไวกว่า Default ที่ใช้ EMA50\n\n"
-                            "EMA30 ตัดลง EMA50: เงื่อนไขเดียวล้วนๆ — ขายหมดทันทีที่ EMA30 ต่ำกว่า EMA50 "
-                            "(หรือโดน SL -8% ก่อน) — เช็คตอนปิดตลาด ขายได้ระหว่างวันถัดไป\n\n"
-                            "EMA30 ตัดลง EMA50 + TP15%: เหมือนอันข้างบน แต่ขายทำกำไรทันทีที่กำไรถึง +15% ด้วย "
-                            "(ไม่ต้องรอ EMA30 หลุด) — ทดสอบด้วย train/test split แล้วช่วยเพิ่ม win rate จริง "
-                            "(win rate ~32-40% เทียบสูตรเดิม ~20-28%)\n\n"
-                            "Quick TP/SL: ไม่มีเงื่อนไข EMA เลย ขายทำกำไรเร็วที่ TP% หรือตัดขาดทุนที่ SL% ตามที่ตั้งไว้ "
-                            "— ค่า default 12%/15% มาจากการทดลอง grid search 690 คอมโบ (webull_bot) ที่พบว่า "
-                            "เป็นสูตรเดียวที่ยังกำไรได้จริงตอนตลาดหมี 2022 (Fed hiking, +4.7% ขณะ B&H -16.0%) "
-                            "ต่างจาก TP5%/SL10% เดิมที่ win rate สูงแต่กำไรรวมน้อยกว่าถือยาวเฉยๆ")
-    use_scaling = strategy == "Scaling Out (10%→50%, 20%→50%)"
-    use_ema5_trail = strategy == "EMA5 Trail (ตัด EMA5 ขายหมด)"
-    use_ema30_50_exit = strategy == "EMA30 ตัดลง EMA50 (ขายหมด)"
-    use_ema30_50_tp15_exit = strategy == "EMA30 ตัดลง EMA50 + Take Profit 15%"
-    tp_pct, sl_pct = 0.05, 0.10
-    if strategy == "Quick TP/SL (ไม่มี EMA)":
-        c_tp, c_sl = st.columns(2)
-        with c_tp:
-            tp_pct = st.number_input("TP %", 1.0, 50.0, 12.0, 1.0) / 100
-        with c_sl:
-            sl_pct = st.number_input("SL %", 1.0, 50.0, 15.0, 1.0) / 100
-    use_tp5_sl10_exit = strategy == "Quick TP/SL (ไม่มี EMA)"
+        st.divider()
+        st.subheader("🎯 กลยุทธ์ EXIT")
+        strategy = st.radio("เลือกกลยุทธ์",
+                           ["Default (Trail EMA50)", "Scaling Out (10%→50%, 20%→50%)", "EMA5 Trail (ตัด EMA5 ขายหมด)",
+                            "EMA30 ตัดลง EMA50 (ขายหมด)", "EMA30 ตัดลง EMA50 + Take Profit 15%",
+                            "Quick TP/SL (ไม่มี EMA)"],
+                           index=exit_idx_q if is_deep_link else 0,
+                           help="Scaling Out: ขาย50% ที่ 10%, ขาย50% ที่ 20%, ปล่อยไป -5%\n\n"
+                                "EMA5 Trail: เงื่อนไขเดียวล้วนๆ ไม่ผสม scaling — ถือเต็มไม้ ขายหมดทันทีที่ราคาปิดต่ำกว่า EMA5 "
+                                "(หรือโดน SL -8% ก่อน) รัดเข็มขัดไวกว่า Default ที่ใช้ EMA50\n\n"
+                                "EMA30 ตัดลง EMA50: เงื่อนไขเดียวล้วนๆ — ขายหมดทันทีที่ EMA30 ต่ำกว่า EMA50 "
+                                "(หรือโดน SL -8% ก่อน) — เช็คตอนปิดตลาด ขายได้ระหว่างวันถัดไป\n\n"
+                                "EMA30 ตัดลง EMA50 + TP15%: เหมือนอันข้างบน แต่ขายทำกำไรทันทีที่กำไรถึง +15% ด้วย "
+                                "(ไม่ต้องรอ EMA30 หลุด) — ทดสอบด้วย train/test split แล้วช่วยเพิ่ม win rate จริง "
+                                "(win rate ~32-40% เทียบสูตรเดิม ~20-28%)\n\n"
+                                "Quick TP/SL: ไม่มีเงื่อนไข EMA เลย ขายทำกำไรเร็วที่ TP% หรือตัดขาดทุนที่ SL% ตามที่ตั้งไว้ "
+                                "— ค่า default 12%/15% มาจากการทดลอง grid search 690 คอมโบ (webull_bot) ที่พบว่า "
+                                "เป็นสูตรเดียวที่ยังกำไรได้จริงตอนตลาดหมี 2022 (Fed hiking, +4.7% ขณะ B&H -16.0%) "
+                                "ต่างจาก TP5%/SL10% เดิมที่ win rate สูงแต่กำไรรวมน้อยกว่าถือยาวเฉยๆ")
+        use_scaling = strategy == "Scaling Out (10%→50%, 20%→50%)"
+        use_ema5_trail = strategy == "EMA5 Trail (ตัด EMA5 ขายหมด)"
+        use_ema30_50_exit = strategy == "EMA30 ตัดลง EMA50 (ขายหมด)"
+        use_ema30_50_tp15_exit = strategy == "EMA30 ตัดลง EMA50 + Take Profit 15%"
+        tp_pct, sl_pct = 0.05, 0.10
+        if strategy == "Quick TP/SL (ไม่มี EMA)":
+            c_tp, c_sl = st.columns(2)
+            with c_tp:
+                tp_pct = st.number_input("TP %", 1.0, 50.0, 12.0, 1.0) / 100
+            with c_sl:
+                sl_pct = st.number_input("SL %", 1.0, 50.0, 15.0, 1.0) / 100
+        use_tp5_sl10_exit = strategy == "Quick TP/SL (ไม่มี EMA)"
 
-    st.divider()
-    fundamental_criteria = {}
-    with st.expander("📊 ตัวชี้วัดทางการเงิน (Fundamental)", expanded=False):
-        st.caption("✅ เลือกเงื่อนไขที่ต้องการใช้")
+        st.divider()
+        fundamental_criteria = {}
+        with st.expander("📊 ตัวชี้วัดทางการเงิน (Fundamental)", expanded=False):
+            st.caption("✅ เลือกเงื่อนไขที่ต้องการใช้")
 
-        # เปิด/ปิดแต่ละเงื่อนไข
-        col_chk1, col_val1 = st.columns([1, 2])
-        with col_chk1:
-            use_pe = st.checkbox("P/E Ratio", value=False, key="use_pe")
-        with col_val1:
-            if use_pe:
-                max_pe = st.number_input("< ", value=20.0, step=1.0, key="max_pe")
-                fundamental_criteria['max_pe'] = max_pe
+            # เปิด/ปิดแต่ละเงื่อนไข
+            col_chk1, col_val1 = st.columns([1, 2])
+            with col_chk1:
+                use_pe = st.checkbox("P/E Ratio", value=False, key="use_pe")
+            with col_val1:
+                if use_pe:
+                    max_pe = st.number_input("< ", value=20.0, step=1.0, key="max_pe")
+                    fundamental_criteria['max_pe'] = max_pe
 
-        col_chk2, col_val2 = st.columns([1, 2])
-        with col_chk2:
-            use_roe = st.checkbox("ROE", value=False, key="use_roe")
-        with col_val2:
-            if use_roe:
-                min_roe = st.number_input("% > ", value=15.0, step=1.0, key="min_roe")
-                fundamental_criteria['min_roe'] = min_roe / 100
+            col_chk2, col_val2 = st.columns([1, 2])
+            with col_chk2:
+                use_roe = st.checkbox("ROE", value=False, key="use_roe")
+            with col_val2:
+                if use_roe:
+                    min_roe = st.number_input("% > ", value=15.0, step=1.0, key="min_roe")
+                    fundamental_criteria['min_roe'] = min_roe / 100
 
-        col_chk3, col_val3 = st.columns([1, 2])
-        with col_chk3:
-            use_de = st.checkbox("D/E Ratio", value=False, key="use_de")
-        with col_val3:
-            if use_de:
-                max_de = st.number_input("< ", value=1.0, step=0.1, key="max_de")
-                fundamental_criteria['max_de'] = max_de
+            col_chk3, col_val3 = st.columns([1, 2])
+            with col_chk3:
+                use_de = st.checkbox("D/E Ratio", value=False, key="use_de")
+            with col_val3:
+                if use_de:
+                    max_de = st.number_input("< ", value=1.0, step=0.1, key="max_de")
+                    fundamental_criteria['max_de'] = max_de
 
-        col_chk4, col_val4 = st.columns([1, 2])
-        with col_chk4:
-            use_gross = st.checkbox("Gross Margin", value=False, key="use_gross")
-        with col_val4:
-            if use_gross:
-                min_gross = st.number_input("% > ", value=40.0, step=5.0, key="min_gross")
-                fundamental_criteria['min_gross_margin'] = min_gross / 100
+            col_chk4, col_val4 = st.columns([1, 2])
+            with col_chk4:
+                use_gross = st.checkbox("Gross Margin", value=False, key="use_gross")
+            with col_val4:
+                if use_gross:
+                    min_gross = st.number_input("% > ", value=40.0, step=5.0, key="min_gross")
+                    fundamental_criteria['min_gross_margin'] = min_gross / 100
 
-        col_chk5, col_val5 = st.columns([1, 2])
-        with col_chk5:
-            use_ebit = st.checkbox("EBIT Margin", value=False, key="use_ebit")
-        with col_val5:
-            if use_ebit:
-                min_ebit = st.number_input("% > ", value=10.0, step=1.0, key="min_ebit")
-                fundamental_criteria['min_ebit_margin'] = min_ebit / 100
+            col_chk5, col_val5 = st.columns([1, 2])
+            with col_chk5:
+                use_ebit = st.checkbox("EBIT Margin", value=False, key="use_ebit")
+            with col_val5:
+                if use_ebit:
+                    min_ebit = st.number_input("% > ", value=10.0, step=1.0, key="min_ebit")
+                    fundamental_criteria['min_ebit_margin'] = min_ebit / 100
 
-        col_chk6, col_val6 = st.columns([1, 2])
-        with col_chk6:
-            use_eps = st.checkbox("EPS Growth", value=False, key="use_eps")
-        with col_val6:
-            if use_eps:
-                min_eps = st.number_input("% > ", value=10.0, step=1.0, key="min_eps")
-                fundamental_criteria['min_eps_growth'] = min_eps / 100
+            col_chk6, col_val6 = st.columns([1, 2])
+            with col_chk6:
+                use_eps = st.checkbox("EPS Growth", value=False, key="use_eps")
+            with col_val6:
+                if use_eps:
+                    min_eps = st.number_input("% > ", value=10.0, step=1.0, key="min_eps")
+                    fundamental_criteria['min_eps_growth'] = min_eps / 100
 
-    # ตรวจสอบว่ามีเงื่อนไข fundamental ถูกเปิดใช้หรือไม่
-    use_fundamental = len(fundamental_criteria) > 0
+        # ตรวจสอบว่ามีเงื่อนไข fundamental ถูกเปิดใช้หรือไม่
+        use_fundamental = len(fundamental_criteria) > 0
 
-    run = st.button("🚀 รัน Backtest", type="primary", use_container_width=True)
+        run = st.button("🚀 รัน Backtest", type="primary", use_container_width=True)
 
 if mode == "📋 สรุปผลการทดลอง (Research Log)":
     st.markdown(RESEARCH_LOG_MD)
