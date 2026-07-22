@@ -111,7 +111,7 @@ DR_SYMBOL_MAP = {
     "QCOM":  ("QCOM06", "confirmed"),     # เจอแล้ว (KKPS, ยืนยันที่ settrade)
     "SMCI":  ("SMCI03", "confirmed"),     # เจอแล้ว (Pi Securities)
     "BLK":   ("BLK06", "confirmed"),      # เจอแล้ว
-    "CME":   (None, "unconfirmed"),       # ยังไม่เจอในลิสต์ settrade ที่ผู้ใช้ส่งมา (A-Z ครบแล้ว) -- น่าจะยังไม่มี DR จริง
+    "CME":   ("CME03", "confirmed"),      # เจอแล้ว (รอบ 5, ผู้ใช้ส่งลิงก์ set.or.th โดยตรง, ยืนยัน CME Group ที่ PI)
     "PYPL":  ("PYPL06", "confirmed"),     # เจอแล้ว (รอบ 4)
     "FTNT":  ("FTNT03", "confirmed"),     # เจอแล้ว
     "DUOL":  ("DUOL06", "confirmed"),     # เจอแล้ว (KKPS, ยืนยันที่ set.or.th)
