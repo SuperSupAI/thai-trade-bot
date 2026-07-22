@@ -132,6 +132,11 @@ RESEARCH_LOG_MD = """
 
 ### 📅 ไทม์ไลน์การทดลอง (วันไหนเทสอะไรบ้าง)
 
+- **22 ก.ค. 2026** — sweep พารามิเตอร์ formation/skip (ใช้ 252/21 มาตลอดไม่เคยลองค่าอื่น) เจอว่า formation
+  6 เดือน (126 วัน) ชนะ 12 เดือนเดิมในหลายมิติ แต่ต้องเช็คให้ robust ก่อนเชื่อ — ทดสอบด้วย rolling-window
+  (48/46 หน้าต่าง 2 ปีเหลื่อมกันทั่วประวัติศาสตร์ 9 ปี) พบว่า DR สหรัฐฯ ความได้เปรียบกลับทิศในช่วง 3 ปีล่าสุด
+  (ยุค AI mega-cap) แต่หุ้นไทยชนะสม่ำเสมอทุกช่วง — **ปรับให้บอท/แอปใช้ formation ต่างกันตาม universe จริง**
+  (ดูหัวข้อ 🆕🆕🆕🆕🆕🆕🆕🆕🆕🆕 ด้านล่าง)
 - **21 ก.ค. 2026** — หา broker/API สำหรับทำบอทเทรดจริง (Settrade Open API รองรับ Python มี Sandbox ทดสอบฟรี
   ไม่ต้องเสี่ยงเงินจริง) แล้วขยายขอบเขตต่อ: เทส momentum กับ DR ประเทศอื่นนอกจากสหรัฐฯ (ญี่ปุ่น, ฮ่องกง/จีน,
   สิงคโปร์) ทั้งแบบแยกตลาดและรวมเป็น "Global DR universe" 85 ตัว เทียบกับ US-only 47 ตัวเดิม (ดูหัวข้อ
@@ -172,6 +177,50 @@ RESEARCH_LOG_MD = """
   (ดูหัวข้อ 🆕 ด้านล่าง) พร้อมต่อ `webull_bot` เข้ากับ SDK ทางการของ Webull
 - **12 ก.ค. 2026** — ชุดการทดลองเดิมทั้งหมดด้านล่าง: Volume Profile POC Pullback Bounce, RVI+MACD,
   Trend Ribbon+Hull+SuperTrend, FVMR Framework, ความสัมพันธ์จำนวน/โทนข่าวกับผลเทรด
+
+---
+
+### 🆕🆕🆕🆕🆕🆕🆕🆕🆕🆕 Sweep Formation/Skip — Formation 6 เดือนดีกว่าสำหรับหุ้นไทย แต่ไม่ใช่ DR (22 ก.ค. 2026)
+
+ใช้ formation 252 วัน (12 เดือน) / skip 21 วัน (1 เดือน) มาตลอดทั้งเซสชันโดยไม่เคยลองค่าอื่นเลย — ลอง sweep
+ดูว่าเป็นค่าที่ดีที่สุดจริงหรือแค่ตามตำรา (Jegadeesh & Titman 1993)
+
+**A) Sweep เบื้องต้น (DR สหรัฐฯ 44 ตัว, top3, TRAIN/VALID/TEST/2022 เดียวกับที่ใช้มาตลอด)**
+
+ระหว่างทำเจอบั๊กตัวเอง: ตอนแรกคำนวณมูลค่าตัวที่ถือค้างตอนจบ TRAIN/VALID/TEST/2022 ด้วยราคา "วันนี้"
+(ก.ค. 2026) แทนราคา ณ วันสุดท้ายของแต่ละช่วงจริงๆ ทำให้ 2022 ออกมาเป็นบวกหมด (ผิดปกติ เพราะทุกครั้งก่อนหน้า
+เจอ 2022 ติดลบ) แก้แล้วได้ 2022 ของ baseline = -31.4% ตรงกับที่เคยรายงานไว้ทุกครั้ง ยืนยันว่าแก้ถูก
+
+| สูตร (formation/skip) | ALL | TRAIN | VALID | TEST | 2022 |
+|---|---|---|---|---|---|
+| F=63(3mo) S=21 | +4,688.5% | +793.7% | +54.3% | +254.2% | -45.5% |
+| **F=126(6mo) S=21** | **+12,419.5%** | **+1,009.1%** | +83.4% | **+488.1%** | **-17.6%** |
+| F=189(9mo) S=21 | +3,684.1% | +304.5% | +170.3% | +337.8% | -35.9% |
+| F=252(12mo) S=21 (baseline) | +4,638.6% | +426.2% | +215.6% | +365.0% | -31.4% |
+| F=315(15mo) S=21 | +2,209.6% | +414.0% | +68.0% | +201.4% | -29.0% |
+| F=252 S=5 | +5,647.7% | +392.8% | +217.4% | **+406.5%** | -14.1% |
+
+F=126 ดูดีเกือบทุกมิติ — แต่นี่คือ sweep 9 combo แล้วเลือกตัวชนะ เข้าข่าย multiple-comparison ตรงๆ
+ต้องเทสให้ robust กว่านี้ก่อนเชื่อ
+
+**B) Robust test ด้วย rolling-window (48/46 หน้าต่าง 2 ปีเหลื่อมกันทุก ~2 เดือน ทั่วประวัติศาสตร์ 9 ปี —
+วิธีเดียวกับที่ใช้พิสูจน์เรื่อง τ ไปก่อนหน้า) เทียบ F=126 vs F=252 (skip=21 คงที่ทั้งคู่)**
+
+| | DR สหรัฐฯ (48 หน้าต่าง) | หุ้นไทย 75 ตัว (46 หน้าต่าง) |
+|---|---|---|
+| F126 ชนะกี่หน้าต่าง | 37/48 (77%) | 34/46 (74%) |
+| ผลต่างเฉลี่ย | +35.6pp | +27.5pp |
+| ช่วงต้น (~3 ปีแรก) | F126 ชนะ +48.7pp | F126 ชนะ +39.0pp |
+| ช่วงกลาง | F126 ชนะ +92.3pp | F126 ชนะ +29.0pp |
+| **ช่วงปลาย (~3 ปีล่าสุด)** | **F126 แพ้ -34.2pp** ❌ | **F126 ชนะ +13.8pp** ✅ |
+
+**จุดสำคัญที่สุด**: DR สหรัฐฯ ความได้เปรียบของ F126 **พลิกกลับเป็นแพ้ในช่วง 3 ปีล่าสุด** (คาดว่าเพราะยุค AI
+mega-cap ที่หุ้นแรงวิ่งต่อเนื่องยาวนาน ต้องการ formation ยาวกว่าจะจับสัญญาณได้ดีกว่า) — ไม่เสถียรตามเวลา
+ไม่ควรเปลี่ยน ส่วน**หุ้นไทยชนะสม่ำเสมอทุกช่วงรวมถึงช่วงล่าสุดด้วย** ไม่มีการกลับทิศ
+
+**สรุปและ implement แล้ว**: **DR ใช้ formation 252 วัน (12 เดือน) เหมือนเดิม, หุ้นไทยเปลี่ยนเป็น formation
+126 วัน (6 เดือน)** ต่างพารามิเตอร์กันตาม universe แทนที่จะบังคับให้เหมือนกันทั้งหมด — ปรับใน `app.py`
+(หน้า Monitor, Backtest, กราฟรายตัว) ให้ใช้ค่าตาม universe ที่เลือกโดยอัตโนมัติแล้ว
 
 ---
 
@@ -1412,8 +1461,11 @@ if is_deep_link:
 mom_ticker_q = qp.get("mom_ticker", "")
 if mom_ticker_q:
     from dr_universe import DR_COVERED_EXPANDED, THAI_MOMENTUM_UNIVERSE, get_dr_symbol, get_thai_trade_symbol
-    MOM_FORMATION, MOM_SKIP = 252, 21
     mom_is_thai = mom_ticker_q.upper().endswith(".BK")
+    # formation 126 วัน (6 เดือน) สำหรับหุ้นไทย vs 252 วัน (12 เดือน) สำหรับ DR -- พิสูจน์ด้วย rolling-window
+    # test (48/46 หน้าต่าง 2 ปีเหลื่อมกันทั่วประวัติศาสตร์ 9 ปี): DR กลับไปแพ้ baseline ในช่วง 3 ปีล่าสุด
+    # (ยุค AI mega-cap ต้องการ formation ยาว) แต่หุ้นไทยชนะสม่ำเสมอทุกช่วงรวมถึงช่วงล่าสุดด้วย
+    MOM_FORMATION, MOM_SKIP = (126, 21) if mom_is_thai else (252, 21)
     mom_universe = THAI_MOMENTUM_UNIVERSE if mom_is_thai else DR_COVERED_EXPANDED
     price_data_mt = load_many(tuple(mom_universe), 3)
     close_mt = price_data_mt.get(mom_ticker_q)
@@ -1436,7 +1488,8 @@ if mom_ticker_q:
     st.markdown(f"<h1>{icon('trend', 36)}{html_lib_mt.escape(mom_ticker_q)} — ราคา + Momentum Score</h1>",
                 unsafe_allow_html=True)
     flag_mt = "" if confidence_mt == "confirmed" else " ⚠️ รหัส DR ยังไม่ยืนยัน"
-    st.caption(f"{symbol_label_mt}: `{trade_symbol_mt or '-'}`{flag_mt} · momentum ปัจจุบัน (12mo skip1mo): {current_score_mt:+.1f}%")
+    mom_formula_label = f"{MOM_FORMATION//21}mo skip1mo"
+    st.caption(f"{symbol_label_mt}: `{trade_symbol_mt or '-'}`{flag_mt} · momentum ปัจจุบัน ({mom_formula_label}): {current_score_mt:+.1f}%")
 
     st.markdown(f"<h3>{icon('trend', 26)}ราคา</h3>", unsafe_allow_html=True)
     pdf_mt = pd.DataFrame({"date": close_mt.index, "close": close_mt.values}).tail(400)
@@ -1449,10 +1502,10 @@ if mom_ticker_q:
     skip_rule_mt = alt.Chart(pd.DataFrame({"x": [skip_date_mt]})).mark_rule(
         color="#f0883e", strokeDash=[4, 3]).encode(x="x:T")
     st.altair_chart((line_mt + formation_rule_mt + skip_rule_mt).properties(height=280), use_container_width=True)
-    st.caption("เส้นเขียว = จุดเริ่ม formation (~12 เดือนก่อน) · เส้นส้ม = จุด skip (~1 เดือนก่อน ที่ใช้คำนวณ momentum)")
+    st.caption(f"เส้นเขียว = จุดเริ่ม formation (~{MOM_FORMATION//21} เดือนก่อน) · เส้นส้ม = จุด skip (~1 เดือนก่อน ที่ใช้คำนวณ momentum)")
 
     st.markdown(f"<h3>{icon('bars', 26)}Momentum Score ย้อนหลัง</h3>", unsafe_allow_html=True)
-    st.caption("ค่า momentum ณ แต่ละวัน = close[วัน-1เดือน] / close[วัน-12เดือน] - 1 (สูตรเดียวกับที่บอทใช้จัดอันดับจริง)")
+    st.caption(f"ค่า momentum ณ แต่ละวัน = close[วัน-1เดือน] / close[วัน-{MOM_FORMATION//21}เดือน] - 1 (สูตรเดียวกับที่บอทใช้จัดอันดับจริง)")
     mom_score_series = (close_mt.shift(MOM_SKIP) / close_mt.shift(MOM_FORMATION) - 1).dropna() * 100
     mdf = pd.DataFrame({"date": mom_score_series.index, "score": mom_score_series.values}).tail(500)
     mom_line = alt.Chart(mdf).mark_line(color="#d29922").encode(
@@ -1613,10 +1666,12 @@ if mode == "DR Momentum Bot Monitor":
 
     from dr_universe import DR_COVERED_EXPANDED, THAI_MOMENTUM_UNIVERSE, get_dr_symbol, get_thai_trade_symbol
 
-    BOT_FORMATION, BOT_SKIP, BOT_TOP_N = 252, 21, 3
     bot_universe = st.radio("Universe", ["DR สหรัฐฯ (44 ตัว)", "หุ้นไทย (75 ตัว)"], horizontal=True, key="bot_universe")
     bot_is_thai = bot_universe.startswith("หุ้นไทย")
     bot_tickers = THAI_MOMENTUM_UNIVERSE if bot_is_thai else DR_COVERED_EXPANDED
+    # formation 126 วัน (6mo) สำหรับหุ้นไทย vs 252 วัน (12mo) สำหรับ DR -- พิสูจน์ด้วย rolling-window test
+    # (ดูหัวข้อ research log): หุ้นไทยชนะ baseline สม่ำเสมอทุกช่วงเวลา ต่างจาก DR ที่กลับไปแพ้ช่วง 3 ปีล่าสุด
+    BOT_FORMATION, BOT_SKIP, BOT_TOP_N = (126, 21, 3) if bot_is_thai else (252, 21, 3)
 
     with st.spinner("กำลังคำนวณอันดับ momentum..."):
         price_data = load_many(tuple(bot_tickers), 2)
@@ -1638,10 +1693,11 @@ if mode == "DR Momentum Bot Monitor":
     rows = []
     unconfirmed_in_top = False
     symbol_col = "รหัสหุ้น (SET)" if bot_is_thai else "รหัส DR"
+    mom_col_label = f"โมเมนตัม ({BOT_FORMATION//21}mo skip1mo)"
     header = "".join(
         f'<th style="text-align:{"left" if c == "หุ้นแม่" else "right"};padding:6px 10px;'
         f'border-bottom:2px solid rgba(128,128,128,.4);white-space:nowrap;">{c}</th>'
-        for c in ["อันดับ", "หุ้นแม่", "โมเมนตัม (12mo skip1mo)", symbol_col, "สถานะ"]
+        for c in ["อันดับ", "หุ้นแม่", mom_col_label, symbol_col, "สถานะ"]
     )
     rows_html = []
     for rank, (ticker, score) in enumerate(scores[:10], start=1):
@@ -1693,7 +1749,7 @@ if mode == "DR Momentum Bot Monitor":
         skip_rule = alt.Chart(pd.DataFrame({"x": [skip_date]})).mark_rule(
             color="#f0883e", strokeDash=[4, 3]).encode(x="x:T")
         st.altair_chart((line + formation_rule + skip_rule).properties(height=220), use_container_width=True)
-        st.caption("เส้นเขียว = จุดเริ่ม formation (~12 เดือนก่อน) · เส้นส้ม = จุด skip (~1 เดือนก่อน ที่ใช้คำนวณ momentum)")
+        st.caption(f"เส้นเขียว = จุดเริ่ม formation (~{BOT_FORMATION//21} เดือนก่อน) · เส้นส้ม = จุด skip (~1 เดือนก่อน ที่ใช้คำนวณ momentum)")
 
     st.divider()
     st.markdown(f"<h3>{icon('coin', 26)}สถานะบัญชี Settrade (Sandbox)</h3>", unsafe_allow_html=True)
@@ -1730,10 +1786,11 @@ if mode == "Backtest ย้อนหลัง (จุดเข้าซื้อ
     from dr_universe import DR_COVERED_EXPANDED, THAI_MOMENTUM_UNIVERSE, get_dr_symbol, get_thai_trade_symbol
     import math
 
-    BT_FORMATION, BT_SKIP, BT_REBAL, BT_TOP_N = 252, 21, 21, 3
     bt_universe = st.radio("Universe", ["DR สหรัฐฯ (44 ตัว)", "หุ้นไทย (75 ตัว)"], horizontal=True, key="bt_universe")
     bt_is_thai = bt_universe.startswith("หุ้นไทย")
     bt_universe_tickers = THAI_MOMENTUM_UNIVERSE if bt_is_thai else DR_COVERED_EXPANDED
+    # formation 126 วัน (6mo) สำหรับหุ้นไทย vs 252 วัน (12mo) สำหรับ DR -- พิสูจน์ด้วย rolling-window test
+    BT_FORMATION, BT_SKIP, BT_REBAL, BT_TOP_N = (126, 21, 21, 3) if bt_is_thai else (252, 21, 21, 3)
     LOOKBACK_OPTIONS = [0.5, 1, 2, 3, 5]
     years_back = st.select_slider("ย้อนหลังกี่ปี", options=LOOKBACK_OPTIONS, value=2,
                                    format_func=lambda y: "6 เดือน" if y == 0.5 else f"{y:g} ปี")
