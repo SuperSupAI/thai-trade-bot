@@ -93,10 +93,10 @@ DR_SYMBOL_MAP = {
     "ONON":  ("ONON03", "confirmed"),
     "RACE":  ("FERRARI80", "confirmed"),
     # ── ขยายรอบ 3 -- ไล่เช็ค set.or.th/settrade/pi/bualuang ทีละตัว 22 ก.ค. 2026 ต่อ 3 เจอเพิ่ม 13/43 ตัว
-    "DDOG":  (None, "unconfirmed"),
-    "AMAT":  (None, "unconfirmed"),
+    "DDOG":  ("DDOG19", "confirmed"),     # เจอแล้ว (ผู้ใช้ส่งลิสต์ DR เต็มจาก settrade มาให้ 22 ก.ค. ต่อ 4)
+    "AMAT":  ("AMAT01", "confirmed"),     # เจอแล้ว (มีทั้ง AMAT01/19/23 หลาย issuer, ใช้ AMAT01)
     "ETN":   ("ETN03", "confirmed"),      # เจอแล้ว (Pi Financial)
-    "KLAC":  (None, "unconfirmed"),
+    "KLAC":  ("KLAC01", "confirmed"),     # เจอแล้ว (มีทั้ง KLAC01/19/23 หลาย issuer, ใช้ KLAC01)
     "LRCX":  (None, "unconfirmed"),
     "MRVL":  ("MRVL80", "confirmed"),     # เจอแล้ว (KTB, ยืนยันที่ set.or.th)
     "MKSI":  (None, "unconfirmed"),
@@ -104,33 +104,34 @@ DR_SYMBOL_MAP = {
     "TEL":   (None, "unconfirmed"),       # ระวัง: เจอ "TEL23" แต่เป็น Tokyo Electron ไม่ใช่ TE Connectivity
                                            # (yfinance ticker "TEL" ของเราคือ TE Connectivity) -- ห้ามจับคู่ผิดบริษัท
     "WDC":   (None, "unconfirmed"),
-    "AAOI":  (None, "unconfirmed"),
+    "AAOI":  ("AAOI03", "confirmed"),     # เจอแล้ว
     "COHR":  ("COHR23", "confirmed"),     # เจอแล้ว (มีทั้ง COHR23/COHR80 หลาย issuer, ใช้ COHR23)
     "LITE":  ("LITE01", "confirmed"),     # เจอแล้ว (Bualuang, มีทั้ง LITE01/23/80 หลาย issuer)
     "QCOM":  ("QCOM06", "confirmed"),     # เจอแล้ว (KKPS, ยืนยันที่ settrade)
     "SMCI":  ("SMCI03", "confirmed"),     # เจอแล้ว (Pi Securities)
-    "BLK":   (None, "unconfirmed"),
+    "BLK":   ("BLK06", "confirmed"),      # เจอแล้ว
     "CME":   (None, "unconfirmed"),
     "PYPL":  (None, "unconfirmed"),
-    "FTNT":  (None, "unconfirmed"),
+    "FTNT":  ("FTNT03", "confirmed"),     # เจอแล้ว
     "DUOL":  ("DUOL06", "confirmed"),     # เจอแล้ว (KKPS, ยืนยันที่ set.or.th)
     "NOW":   (None, "unconfirmed"),
-    "JCI":   (None, "unconfirmed"),
+    "JCI":   ("JCI03", "confirmed"),      # เจอแล้ว
     "KEYS":  (None, "unconfirmed"),
     "NEE":   (None, "unconfirmed"),
-    "BE":    (None, "unconfirmed"),
-    "CEG":   (None, "unconfirmed"),
-    "AMPX":  (None, "unconfirmed"),
-    "EOSE":  (None, "unconfirmed"),
+    "BE":    ("BE03", "confirmed"),       # เจอแล้ว
+    "CEG":   ("CEG23", "confirmed"),      # เจอแล้ว
+    "AMPX":  ("AMPX03", "confirmed"),     # เจอแล้ว
+    "EOSE":  ("EOSE03", "confirmed"),     # เจอแล้ว
     "CCJ":   ("CCJ23", "confirmed"),      # เจอแล้ว (INVX, ยืนยันที่ set.or.th)
-    "HIMS":  (None, "unconfirmed"),
-    "FCX":   (None, "unconfirmed"),
-    "GOLD":  (None, "unconfirmed"),
+    "HIMS":  ("HIMS03", "confirmed"),     # เจอแล้ว
+    "FCX":   ("FCX23", "confirmed"),      # เจอแล้ว
+    "GOLD":  (None, "unconfirmed"),       # ระวัง: ในลิสต์มี GOLD03/GOLD19/GOLDUS* แต่เป็น SPDR Gold ETF (ทองคำแท่ง)
+                                           # ไม่ใช่หุ้น Barrick Gold Corp (ticker เราคือ GOLD=Barrick) -- ห้ามจับคู่ผิด
     "MP":    (None, "unconfirmed"),
     "NEM":   (None, "unconfirmed"),
     "INFY":  (None, "unconfirmed"),
     "ASTS":  ("ASTS01", "confirmed"),     # เจอแล้ว (Bualuang, ยืนยันที่หน้า iNAV)
-    "JOBY":  (None, "unconfirmed"),
+    "JOBY":  ("JOBY03", "confirmed"),     # เจอแล้ว
     "QBTS":  (None, "unconfirmed"),
     "RGTI":  (None, "unconfirmed"),
     "RKLB":  (None, "unconfirmed"),
