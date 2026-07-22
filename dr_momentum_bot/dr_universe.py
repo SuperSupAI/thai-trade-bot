@@ -42,9 +42,9 @@ DR_SYMBOL_MAP = {
     "KO":    ("KO80", "confirmed"),
     "CSCO":  ("CSCO06", "confirmed"),
     "CRM":   ("CRM01", "confirmed"),
-    "GS":    (None, "unconfirmed"),   # ไม่เจอในลิสต์ ก.ค. 2026 -- อาจไม่มี DR แล้ว ต้องเช็ค
+    "GS":    ("GSUS06", "confirmed"),   # เจอแล้ว 22 ก.ค. 2026 (Finnomena) -- แก้จาก unconfirmed
     "JNJ":   ("JNJ03", "confirmed"),
-    "DIS":   (None, "unconfirmed"),   # ไม่เจอในลิสต์ ก.ค. 2026 -- อาจไม่มี DR แล้ว ต้องเช็ค
+    "DIS":   ("DISNEY19", "confirmed"),   # เจอแล้ว 22 ก.ค. 2026 (Finnomena) -- แก้จาก unconfirmed
     "NKE":   ("NIKE80", "confirmed"),
     "GOOGL": ("GOOGL01", "confirmed"),
     "AMZN":  ("AMZN01", "confirmed"),
@@ -54,7 +54,7 @@ DR_SYMBOL_MAP = {
     "COST":  ("COSTCO19", "confirmed"),
     "PEP":   ("PEP80", "confirmed"),
     "ADBE":  ("ADBE03", "confirmed"),
-    "LULU":  (None, "unconfirmed"),   # ไม่เจอในลิสต์ ก.ค. 2026 -- อาจไม่มี DR แล้ว ต้องเช็ค
+    "LULU":  ("LULU06", "confirmed"),   # เจอแล้ว 22 ก.ค. 2026 (Finnomena) -- แก้จาก unconfirmed
     "ABBV":  ("ABBV19", "confirmed"),
     "AMD":   ("AMD80", "confirmed"),
     "AVGO":  ("AVGO80", "confirmed"),
@@ -92,26 +92,28 @@ DR_SYMBOL_MAP = {
     "BILI":  ("BILIBILI01", "confirmed"),
     "ONON":  ("ONON03", "confirmed"),
     "RACE":  ("FERRARI80", "confirmed"),
+    # ── ขยายรอบ 3 -- ไล่เช็ค set.or.th/settrade/pi/bualuang ทีละตัว 22 ก.ค. 2026 ต่อ 3 เจอเพิ่ม 13/43 ตัว
     "DDOG":  (None, "unconfirmed"),
     "AMAT":  (None, "unconfirmed"),
-    "ETN":   (None, "unconfirmed"),
+    "ETN":   ("ETN03", "confirmed"),      # เจอแล้ว (Pi Financial)
     "KLAC":  (None, "unconfirmed"),
     "LRCX":  (None, "unconfirmed"),
-    "MRVL":  (None, "unconfirmed"),
+    "MRVL":  ("MRVL80", "confirmed"),     # เจอแล้ว (KTB, ยืนยันที่ set.or.th)
     "MKSI":  (None, "unconfirmed"),
-    "SNDK":  (None, "unconfirmed"),
-    "TEL":   (None, "unconfirmed"),
+    "SNDK":  ("SNDK03", "confirmed"),     # เจอแล้ว (Pi Financial)
+    "TEL":   (None, "unconfirmed"),       # ระวัง: เจอ "TEL23" แต่เป็น Tokyo Electron ไม่ใช่ TE Connectivity
+                                           # (yfinance ticker "TEL" ของเราคือ TE Connectivity) -- ห้ามจับคู่ผิดบริษัท
     "WDC":   (None, "unconfirmed"),
     "AAOI":  (None, "unconfirmed"),
-    "COHR":  (None, "unconfirmed"),
-    "LITE":  (None, "unconfirmed"),
-    "QCOM":  (None, "unconfirmed"),
-    "SMCI":  (None, "unconfirmed"),
+    "COHR":  ("COHR23", "confirmed"),     # เจอแล้ว (มีทั้ง COHR23/COHR80 หลาย issuer, ใช้ COHR23)
+    "LITE":  ("LITE01", "confirmed"),     # เจอแล้ว (Bualuang, มีทั้ง LITE01/23/80 หลาย issuer)
+    "QCOM":  ("QCOM06", "confirmed"),     # เจอแล้ว (KKPS, ยืนยันที่ settrade)
+    "SMCI":  ("SMCI03", "confirmed"),     # เจอแล้ว (Pi Securities)
     "BLK":   (None, "unconfirmed"),
     "CME":   (None, "unconfirmed"),
     "PYPL":  (None, "unconfirmed"),
     "FTNT":  (None, "unconfirmed"),
-    "DUOL":  (None, "unconfirmed"),
+    "DUOL":  ("DUOL06", "confirmed"),     # เจอแล้ว (KKPS, ยืนยันที่ set.or.th)
     "NOW":   (None, "unconfirmed"),
     "JCI":   (None, "unconfirmed"),
     "KEYS":  (None, "unconfirmed"),
@@ -120,14 +122,14 @@ DR_SYMBOL_MAP = {
     "CEG":   (None, "unconfirmed"),
     "AMPX":  (None, "unconfirmed"),
     "EOSE":  (None, "unconfirmed"),
-    "CCJ":   (None, "unconfirmed"),
+    "CCJ":   ("CCJ23", "confirmed"),      # เจอแล้ว (INVX, ยืนยันที่ set.or.th)
     "HIMS":  (None, "unconfirmed"),
     "FCX":   (None, "unconfirmed"),
     "GOLD":  (None, "unconfirmed"),
     "MP":    (None, "unconfirmed"),
     "NEM":   (None, "unconfirmed"),
     "INFY":  (None, "unconfirmed"),
-    "ASTS":  (None, "unconfirmed"),
+    "ASTS":  ("ASTS01", "confirmed"),     # เจอแล้ว (Bualuang, ยืนยันที่หน้า iNAV)
     "JOBY":  (None, "unconfirmed"),
     "QBTS":  (None, "unconfirmed"),
     "RGTI":  (None, "unconfirmed"),
