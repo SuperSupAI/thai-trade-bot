@@ -1664,6 +1664,22 @@ if mode == "DR Momentum Bot Monitor":
     st.caption("อันดับ momentum ปัจจุบัน (สูตร baseline ล้วนๆ ไม่มี overlay — พิสูจน์แล้วว่า overlay overfit) "
                "+ สถานะบัญชี Settrade Open API ถ้าต่อไว้ · เพื่อการเรียนรู้ ไม่ใช่คำแนะนำลงทุน")
 
+    # ── market radar: ภาพรวมตลาดกว้างๆ ก่อนดูอันดับ momentum (แรงบันดาลใจจากฟีเจอร์ finance radar
+    # ของ worldmonitor แต่ทำแบบง่ายมาก แค่ 4 ตัวชี้วัดหลัก ไม่ใช่ dashboard เต็มรูปแบบ) ──
+    RADAR_TICKERS = {"SET Index": "^SET.BK", "S&P 500": "^GSPC", "Nasdaq": "^IXIC", "USD/THB": "THB=X"}
+    radar_cols = st.columns(len(RADAR_TICKERS))
+    for col, (label, sym) in zip(radar_cols, RADAR_TICKERS.items()):
+        try:
+            close = load_one(sym, 1)
+            if close is not None and len(close) >= 2:
+                last, prev = float(close.iloc[-1]), float(close.iloc[-2])
+                col.metric(label, f"{last:,.2f}", f"{(last/prev - 1)*100:+.2f}%")
+            else:
+                col.metric(label, "—")
+        except Exception:
+            col.metric(label, "—")
+    st.divider()
+
     from dr_universe import DR_COVERED_EXPANDED, THAI_MOMENTUM_UNIVERSE, get_dr_symbol, get_thai_trade_symbol
 
     bot_universe = st.radio("Universe", ["DR สหรัฐฯ (44 ตัว)", "หุ้นไทย (75 ตัว)"], horizontal=True, key="bot_universe")
