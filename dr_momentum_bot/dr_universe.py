@@ -97,27 +97,29 @@ DR_SYMBOL_MAP = {
     "AMAT":  ("AMAT01", "confirmed"),     # เจอแล้ว (มีทั้ง AMAT01/19/23 หลาย issuer, ใช้ AMAT01)
     "ETN":   ("ETN03", "confirmed"),      # เจอแล้ว (Pi Financial)
     "KLAC":  ("KLAC01", "confirmed"),     # เจอแล้ว (มีทั้ง KLAC01/19/23 หลาย issuer, ใช้ KLAC01)
-    "LRCX":  (None, "unconfirmed"),
+    "LRCX":  ("LRCX01", "confirmed"),     # เจอแล้ว (รอบ 4, มีทั้ง LRCX01/19/23/80 หลาย issuer, ใช้ LRCX01)
     "MRVL":  ("MRVL80", "confirmed"),     # เจอแล้ว (KTB, ยืนยันที่ set.or.th)
-    "MKSI":  (None, "unconfirmed"),
+    "MKSI":  ("MKSI03", "confirmed"),     # เจอแล้ว (รอบ 4)
     "SNDK":  ("SNDK03", "confirmed"),     # เจอแล้ว (Pi Financial)
-    "TEL":   (None, "unconfirmed"),       # ระวัง: เจอ "TEL23" แต่เป็น Tokyo Electron ไม่ใช่ TE Connectivity
-                                           # (yfinance ticker "TEL" ของเราคือ TE Connectivity) -- ห้ามจับคู่ผิดบริษัท
-    "WDC":   (None, "unconfirmed"),
+    "TEL":   (None, "unconfirmed"),       # ระวัง: มี "TEL23"/"TEL80" จริง (ยืนยันซ้ำรอบ 4 ว่าตลาดอ้างอิงคือ TSE
+                                           # = Tokyo Stock Exchange) เป็น Tokyo Electron ไม่ใช่ TE Connectivity
+                                           # (yfinance ticker "TEL" ของเราคือ TE Connectivity เทรดที่ NYSE) -- ห้ามจับคู่ผิดบริษัท
+    "WDC":   ("WDC03", "confirmed"),      # เจอแล้ว (รอบ 4)
     "AAOI":  ("AAOI03", "confirmed"),     # เจอแล้ว
     "COHR":  ("COHR23", "confirmed"),     # เจอแล้ว (มีทั้ง COHR23/COHR80 หลาย issuer, ใช้ COHR23)
     "LITE":  ("LITE01", "confirmed"),     # เจอแล้ว (Bualuang, มีทั้ง LITE01/23/80 หลาย issuer)
     "QCOM":  ("QCOM06", "confirmed"),     # เจอแล้ว (KKPS, ยืนยันที่ settrade)
     "SMCI":  ("SMCI03", "confirmed"),     # เจอแล้ว (Pi Securities)
     "BLK":   ("BLK06", "confirmed"),      # เจอแล้ว
-    "CME":   (None, "unconfirmed"),
-    "PYPL":  (None, "unconfirmed"),
+    "CME":   (None, "unconfirmed"),       # ยังไม่เจอในลิสต์ settrade ที่ผู้ใช้ส่งมา (A-Z ครบแล้ว) -- น่าจะยังไม่มี DR จริง
+    "PYPL":  ("PYPL06", "confirmed"),     # เจอแล้ว (รอบ 4)
     "FTNT":  ("FTNT03", "confirmed"),     # เจอแล้ว
     "DUOL":  ("DUOL06", "confirmed"),     # เจอแล้ว (KKPS, ยืนยันที่ set.or.th)
-    "NOW":   (None, "unconfirmed"),
+    "NOW":   ("NOW19", "confirmed"),      # เจอแล้ว (รอบ 4)
     "JCI":   ("JCI03", "confirmed"),      # เจอแล้ว
-    "KEYS":  (None, "unconfirmed"),
-    "NEE":   (None, "unconfirmed"),
+    "KEYS":  (None, "unconfirmed"),       # ยังไม่เจอในลิสต์ settrade ที่ผู้ใช้ส่งมา -- ระวังอย่าสับสนกับ KEYENCE23
+                                           # (Keyence Corp ญี่ปุ่น คนละบริษัทกับ Keysight Technologies)
+    "NEE":   ("NEE80", "confirmed"),      # เจอแล้ว (รอบ 4)
     "BE":    ("BE03", "confirmed"),       # เจอแล้ว
     "CEG":   ("CEG23", "confirmed"),      # เจอแล้ว
     "AMPX":  ("AMPX03", "confirmed"),     # เจอแล้ว
@@ -127,14 +129,14 @@ DR_SYMBOL_MAP = {
     "FCX":   ("FCX23", "confirmed"),      # เจอแล้ว
     "GOLD":  (None, "unconfirmed"),       # ระวัง: ในลิสต์มี GOLD03/GOLD19/GOLDUS* แต่เป็น SPDR Gold ETF (ทองคำแท่ง)
                                            # ไม่ใช่หุ้น Barrick Gold Corp (ticker เราคือ GOLD=Barrick) -- ห้ามจับคู่ผิด
-    "MP":    (None, "unconfirmed"),
-    "NEM":   (None, "unconfirmed"),
-    "INFY":  (None, "unconfirmed"),
+    "MP":    ("MP23", "confirmed"),       # เจอแล้ว (รอบ 4)
+    "NEM":   ("NEM06", "confirmed"),      # เจอแล้ว (รอบ 4)
+    "INFY":  (None, "unconfirmed"),       # ยังไม่เจอในลิสต์ settrade ที่ผู้ใช้ส่งมา -- น่าจะยังไม่มี DR จริง
     "ASTS":  ("ASTS01", "confirmed"),     # เจอแล้ว (Bualuang, ยืนยันที่หน้า iNAV)
     "JOBY":  ("JOBY03", "confirmed"),     # เจอแล้ว
-    "QBTS":  (None, "unconfirmed"),
-    "RGTI":  (None, "unconfirmed"),
-    "RKLB":  (None, "unconfirmed"),
+    "QBTS":  ("QBTS03", "confirmed"),     # เจอแล้ว (รอบ 4)
+    "RGTI":  ("RGTI03", "confirmed"),     # เจอแล้ว (รอบ 4)
+    "RKLB":  ("RKLB01", "confirmed"),     # เจอแล้ว (รอบ 4, มีทั้ง RKLB01/03/23/80 หลาย issuer, ใช้ RKLB01)
 }
 
 
