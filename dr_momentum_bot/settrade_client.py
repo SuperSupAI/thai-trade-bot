@@ -36,8 +36,13 @@ def get_investor(is_auto_queue: bool = False) -> Investor:
     )
 
 
-def get_equity_account():
-    investor = get_investor()
+def get_equity_account(investor: Investor = None):
+    """รับ investor ที่ล็อกอินไว้แล้วมาใช้ต่อได้ (investor=None คือสร้างใหม่ -- ใช้ตอนเรียกแบบ standalone)
+    สำคัญ: ถ้าต้องใช้ทั้ง Equity() และ MarketData() ในสคริปต์เดียวกัน ต้องสร้าง investor ตัวเดียวแล้วส่งเข้ามา
+    ทั้งคู่ ห้ามสร้าง Investor(...) แยกกันคนละตัว เพราะแต่ละตัวล็อกอินเซสชันของตัวเองอิสระต่อกัน เจอบั๊กจริง
+    ที่ Settrade Sandbox: สร้าง 2 เซสชันติดกันแล้วอีกฝั่งเจอ "Login required"/"Service is not ready yet"
+    เพราะเซสชันชนกัน"""
+    investor = investor or get_investor()
     account_no = os.environ["SETTRADE_ACCOUNT_NO"]
     return investor.Equity(account_no=account_no)
 

@@ -54,9 +54,15 @@ TRADABLE_TICKERS = [t for t in DR_COVERED_EXPANDED if get_dr_symbol(t)[0]]
 
 
 def get_current_dr_price(equity_marketdata, dr_symbol: str) -> float:
+    """ยืนยันโครงสร้าง response จริงจาก Settrade Sandbox แล้ว (22 ก.ค. 2026): คีย์คือ 'last'/'average'
+    ไม่มีคีย์ 'marketPrice'/'lastPrice' เลย -- ที่เคยเดาไว้ผิด ทั้งคู่ไม่มีจริง
+    หมายเหตุ: DR บางตัวใน Sandbox ไม่มีข้อมูลราคาจำลองเลย (last/average เป็น None ทั้งคู่, totalVolume=0)
+    หรือแม้แต่ "Symbol not found" ทั้งที่ตัวจริงมีอยู่บน SET -- Sandbox จำลองข้อมูลแค่บางสัญลักษณ์ ไม่ครบทุกตัว"""
     quote = equity_marketdata.get_quote_symbol(dr_symbol)
-    # โครงสร้าง response จริงต้องเช็คตอนต่อ Sandbox จริง (คีย์อาจชื่อ 'last' หรือ 'lastPrice' -- ปรับตามที่เจอ)
-    return float(quote.get("last") or quote.get("lastPrice") or quote["marketPrice"])
+    price = quote.get("last") or quote.get("average")
+    if price is None:
+        raise ValueError(f"ไม่มีข้อมูลราคาสำหรับ {dr_symbol} ใน Settrade Sandbox (last/average เป็นค่าว่างทั้งคู่)")
+    return float(price)
 
 
 def get_held_symbols(equity) -> dict:
@@ -109,10 +115,12 @@ def main():
     budget_each = CAPITAL_THB / len(orders)
 
     # 3) เชื่อม Settrade Open API (ต้องตั้ง env vars ก่อน — ดู settrade_client.py)
+    # สร้าง investor เดียว ใช้ร่วมกันทั้ง Equity() และ MarketData() -- ถ้าสร้างแยกคนละตัวจะเจอบั๊กจริง
+    # ที่ Settrade Sandbox (เซสชันชนกัน ฝั่ง MarketData ขึ้น "Login required"/"Service is not ready yet")
     try:
         from settrade_client import get_equity_account, get_investor, place_buy_order, place_sell_order
         investor = get_investor()
-        equity = get_equity_account()
+        equity = get_equity_account(investor)
         market = investor.MarketData()
     except Exception as e:
         print(f"\n⚠️ ยังต่อ Settrade API ไม่ได้ ({type(e).__name__}: {e})")
