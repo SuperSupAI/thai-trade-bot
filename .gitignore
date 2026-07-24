@@ -38,3 +38,4 @@ webull_bot/backtest_output*.txt
 dr_momentum_bot/.env
 dr_momentum_bot/config.local.py
 dr_momentum_bot/*.log
+dr_momentum_bot/trade_history.csv

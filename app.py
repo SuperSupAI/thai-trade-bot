@@ -1938,7 +1938,7 @@ with st.sidebar:
     symbol = sym_q if is_deep_link else "PIMO.BK"
     group = None  # ตั้งไว้ก่อนกัน NameError ตอน mode == "หุ้นเดียว" (group ไม่ถูกตั้งค่าในโหมดนั้น)
     mode = st.radio("โหมด", ["สรุปผลการทดลอง (Research Log)", "DR Momentum Bot Monitor",
-                             "Backtest ย้อนหลัง (จุดเข้าซื้อ)"])
+                             "ติดตามผลจริง (Live Tracking)", "Backtest ย้อนหลัง (จุดเข้าซื้อ)"])
     if mode == "หุ้นเดียว":
         symbol = st.text_input("หุ้น (เช่น PIMO.BK)", symbol).strip().upper()
     elif mode == "สแกนทั้งกลุ่ม":
@@ -2205,6 +2205,153 @@ if mode == "DR Momentum Bot Monitor":
                    "`dr_momentum_bot/.env` ก่อน (ดูวิธีใน `dr_momentum_bot/settrade_client.py`) "
                    "หน้านี้รันได้เฉพาะตอนรันแอปบนเครื่อง local ที่มีไฟล์ .env เท่านั้น "
                    "(เวอร์ชันบน Streamlit Cloud จะไม่มีไฟล์นี้ ไม่ต่อบัญชีได้เป็นปกติ)")
+
+    st.stop()
+
+if mode == "ติดตามผลจริง (Live Tracking)":
+    st.markdown(f"<h2>{icon('coin', 32)}ติดตามผลจริง — เงินเล่น DR Momentum</h2>", unsafe_allow_html=True)
+    st.caption("อ่านจากประวัติเทรดจริงที่ `bot.py` บันทึกไว้ทุกครั้งที่รัน (`dr_momentum_bot/trade_history.csv`) "
+               "ไม่ใช่ผล backtest — เพื่อการเรียนรู้ ไม่ใช่คำแนะนำลงทุน")
+
+    from dr_universe import DR_COVERED_EXPANDED, get_dr_symbol
+    import os as _os
+
+    log_path = _os.path.join(_os.path.dirname(__file__), "dr_momentum_bot", "trade_history.csv")
+    if not _os.path.exists(log_path):
+        st.info("ยังไม่มีประวัติเทรด — พอรัน `bot.py` ครั้งแรก (ไม่ว่าจะ DRY_RUN หรือยิงจริง) "
+                "จะเริ่มบันทึกลง `dr_momentum_bot/trade_history.csv` อัตโนมัติ แล้วหน้านี้จะแสดงผลให้")
+        st.stop()
+
+    log_df = pd.read_csv(log_path, parse_dates=["timestamp"])
+    if log_df.empty:
+        st.info("ไฟล์ประวัติเทรดว่างอยู่ — รอ `bot.py` รันรอบแรกที่มีคำสั่งซื้อ/ขายจริง")
+        st.stop()
+
+    live_rows = log_df[log_df["dry_run"] == False]  # noqa: E712 -- pandas bool column, == ชัดเจนกว่า
+    dry_rows = log_df[log_df["dry_run"] == True]  # noqa: E712
+    if live_rows.empty:
+        st.warning(f"มีแต่ log จาก DRY_RUN ({len(dry_rows)} รายการ) ยังไม่มีออเดอร์จริงที่ยิงออกไป — "
+                   "ตัวเลขด้านล่างนี้เป็น**แผนที่จะซื้อ ไม่ใช่ที่ซื้อจริง** ใช้ดูตรวจสอบตรรกะบอทได้ "
+                   "แต่ยังไม่ใช่ผลตอบแทนจริง")
+        active_df = log_df
+    else:
+        active_df = live_rows
+        if not dry_rows.empty:
+            st.caption(f"กรองแสดงเฉพาะ {len(live_rows)} รายการที่ยิงจริง (ซ่อน {len(dry_rows)} รายการ DRY_RUN)")
+
+    # จับคู่ BUY-SELL แบบ FIFO ต่อ dr_symbol เพื่อแยกตัวที่ถืออยู่ vs ปิดแล้ว
+    from collections import defaultdict
+    open_buys = defaultdict(list)
+    closed_trades = []
+    for _, r in active_df.sort_values("timestamp").iterrows():
+        if r["action"] == "BUY":
+            open_buys[r["dr_symbol"]].append(r)
+        else:
+            if open_buys[r["dr_symbol"]]:
+                b = open_buys[r["dr_symbol"]].pop(0)
+                held_days = (r["timestamp"] - b["timestamp"]).days
+                pnl_pct = (r["price"] / b["price"] - 1) * 100
+                closed_trades.append(dict(
+                    ticker=b["ticker"], dr_symbol=b["dr_symbol"],
+                    entry_date=b["timestamp"].date(), exit_date=r["timestamp"].date(),
+                    entry_price=b["price"], exit_price=r["price"],
+                    pnl_pct=pnl_pct, held_days=held_days,
+                ))
+
+    current_holdings = [b for buys in open_buys.values() for b in buys]
+
+    total_invested = active_df[active_df["action"] == "BUY"]["value_thb"].sum()
+    total_divested = active_df[active_df["action"] == "SELL"]["value_thb"].sum()
+
+    st.markdown(f"<h3>{icon('bars', 26)}พอร์ตตอนนี้ ({len(current_holdings)} ตัว)</h3>", unsafe_allow_html=True)
+    current_value_thb = 0.0
+    holdings_rows = []
+    if current_holdings:
+        holding_tickers = tuple(sorted(set(b["ticker"] for b in current_holdings)))
+        years_needed = max(1, (pd.Timestamp.now() - active_df["timestamp"].min()).days // 365 + 1)
+        with st.spinner("ดึงราคาปัจจุบัน..."):
+            live_price_data = load_many(holding_tickers, years_needed)
+        for b in current_holdings:
+            close = live_price_data.get(b["ticker"])
+            cur_price_usd = float(close.iloc[-1]) if close is not None and len(close) else None
+            # ราคาที่บันทึกไว้ตอนซื้อคือราคา DR (บาท) ส่วนราคาสดที่ดึงมาคือหุ้นแม่ (USD ส่วนใหญ่)
+            # ใช้ % เปลี่ยนแปลงของหุ้นแม่แทนราคาตรงๆ เพื่อประมาณ unrealized P&L (DR ควรวิ่งตามสัดส่วนเดียวกัน)
+            entry_dt = b["timestamp"]
+            base_price_usd = None
+            if close is not None:
+                on_or_before = close.index[close.index <= entry_dt]
+                if len(on_or_before):
+                    base_price_usd = float(close.loc[on_or_before[-1]])
+            est_pnl_pct = ((cur_price_usd / base_price_usd - 1) * 100
+                           if cur_price_usd and base_price_usd else None)
+            est_value_thb = b["value_thb"] * (1 + est_pnl_pct / 100) if est_pnl_pct is not None else b["value_thb"]
+            current_value_thb += est_value_thb
+            holdings_rows.append(dict(
+                หุ้นแม่=b["ticker"], รหัสDR=b["dr_symbol"],
+                วันที่ซื้อ=entry_dt.date(), ราคาซื้อ_DR=f"{b['price']:,.2f}",
+                มูลค่าซื้อ_บาท=f"{b['value_thb']:,.0f}",
+                กำไรขาดทุนประมาณ=f"{est_pnl_pct:+.1f}%" if est_pnl_pct is not None else "ดึงราคาไม่ได้",
+            ))
+        st.dataframe(pd.DataFrame(holdings_rows), use_container_width=True, hide_index=True)
+        st.caption("กำไร/ขาดทุนประมาณจาก % เปลี่ยนแปลงของหุ้นแม่ (yfinance) เทียบวันที่ซื้อ ไม่ใช่ราคา DR "
+                   "จริงบน SET (มี tracking error เล็กน้อยได้ตามปกติ) — เช็คราคา DR จริงที่ Settrade")
+    else:
+        st.info("ไม่มีตัวที่ถืออยู่ตอนนี้ตามประวัติเทรด (ทุกตัวถูกขายไปหมดแล้ว หรือยังไม่เคยซื้อ)")
+
+    st.divider()
+    st.markdown(f"<h3>{icon('trend', 26)}สรุปผลตอบแทน</h3>", unsafe_allow_html=True)
+    net_realized_thb = total_divested - active_df[
+        (active_df["action"] == "BUY") & active_df["dr_symbol"].isin(
+            {t["dr_symbol"] for t in closed_trades})
+    ]["value_thb"].sum()
+    total_value_now = current_value_thb + total_divested
+    overall_return_pct = ((total_value_now - total_invested) / total_invested * 100) if total_invested else 0.0
+    first_trade_date = active_df["timestamp"].min()
+    days_trading = (pd.Timestamp.now() - first_trade_date).days
+
+    c1, c2, c3, c4 = st.columns(4)
+    c1.metric("ลงทุนรวม (BUY สะสม)", f"{total_invested:,.0f} บาท")
+    c2.metric("มูลค่าปัจจุบัน (ประมาณ)", f"{total_value_now:,.0f} บาท")
+    c3.metric("ผลตอบแทนรวม", f"{overall_return_pct:+.1f}%")
+    c4.metric("เทรดมาแล้ว", f"{days_trading} วัน")
+
+    if closed_trades:
+        st.markdown("**ประวัติที่ปิดแล้ว (realized)**")
+        closed_df = pd.DataFrame(closed_trades).sort_values("exit_date", ascending=False)
+        closed_display = closed_df.rename(columns={
+            "ticker": "หุ้นแม่", "dr_symbol": "รหัสDR", "entry_date": "วันที่ซื้อ", "exit_date": "วันที่ขาย",
+            "entry_price": "ราคาซื้อ", "exit_price": "ราคาขาย", "pnl_pct": "กำไร/ขาดทุน", "held_days": "ถือ(วัน)",
+        })
+        closed_display["กำไร/ขาดทุน"] = closed_display["กำไร/ขาดทุน"].apply(lambda x: f"{x:+.1f}%")
+        closed_display["ราคาซื้อ"] = closed_display["ราคาซื้อ"].apply(lambda x: f"{x:,.2f}")
+        closed_display["ราคาขาย"] = closed_display["ราคาขาย"].apply(lambda x: f"{x:,.2f}")
+        st.dataframe(closed_display, use_container_width=True, hide_index=True)
+
+    st.divider()
+    st.markdown(f"<h3>{icon('bars', 26)}Log เต็ม ({len(log_df)} รายการ)</h3>", unsafe_allow_html=True)
+    with st.expander("ดู log ดิบทั้งหมด (รวม DRY_RUN)"):
+        st.dataframe(log_df.sort_values("timestamp", ascending=False), use_container_width=True, hide_index=True)
+
+    st.divider()
+    st.markdown(f"<h3>{icon('coin', 26)}เทียบกับที่ Settrade จริง (Sandbox)</h3>", unsafe_allow_html=True)
+    try:
+        from settrade_client import get_equity_account
+        equity = get_equity_account()
+        info = equity.get_account_info()
+        sc1, sc2, sc3 = st.columns(3)
+        sc1.metric("เงินสดคงเหลือ", f"{info.get('cashBalance', 0):,.0f} บาท")
+        sc2.metric("วงเงินซื้อได้", f"{info.get('lineAvailable', 0):,.0f} บาท")
+        sc3.metric("ประเภทบัญชี", info.get("accountType", "-"))
+        portfolios = equity.get_portfolios()
+        portfolio_list = portfolios.get("portfolioList", []) if isinstance(portfolios, dict) else portfolios
+        if portfolio_list:
+            st.markdown("**พอร์ตจริงที่ Settrade ตอนนี้** (ใช้เทียบกับตาราง \"พอร์ตตอนนี้\" ด้านบนว่าตรงกันไหม)")
+            st.dataframe(pd.DataFrame(portfolio_list), use_container_width=True, hide_index=True)
+        else:
+            st.info("บัญชี Settrade ว่างอยู่ (ไม่มีหุ้นถือ)")
+    except Exception as e:
+        st.warning(f"ยังไม่ได้ต่อ Settrade Open API ({type(e).__name__}) — ตัวเลขด้านบนอ่านจาก log ไฟล์เท่านั้น "
+                   "ยังไม่ได้ cross-check กับพอร์ตจริง")
 
     st.stop()
 
